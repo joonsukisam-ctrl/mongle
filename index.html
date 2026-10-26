@@ -7,6 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="몽글 대포">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
 </head>
 <body>
@@ -65,11 +68,19 @@ body.in-menu .hud-top,body.in-menu .controls{display:none;}
 #weaponBtn{border:0;border-radius:999px;padding:7px 14px;font-size:15px;background:rgba(255,250,240,.93);box-shadow:0 3px 0 rgba(74,59,92,.18);white-space:nowrap;}
 #weaponBtn em{font-style:normal;color:#ff6f96;}
 #fireBtn{--p:0;position:relative;width:92px;height:92px;border-radius:50%;border:0;padding:7px;touch-action:none;
-  background:conic-gradient(#ff6f96 calc(var(--p)*1%),rgba(255,250,240,.85) 0);box-shadow:0 5px 0 rgba(74,59,92,.2);}
-#fireBtn span{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:var(--sun);font-size:22px;box-shadow:inset 0 -6px 0 rgba(0,0,0,.08);}
+  background:conic-gradient(var(--tc,#6fe0b8) calc(var(--p)*1%),rgba(255,250,240,.85) 0);box-shadow:0 5px 0 rgba(74,59,92,.2);}
+#fireBtn span{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:var(--sun);font-size:22px;line-height:1.05;box-shadow:inset 0 -6px 0 rgba(0,0,0,.08);}
+#fireBtn small{font-size:14px;opacity:.75;}
 #fireBtn.on{transform:translateY(3px);box-shadow:0 2px 0 rgba(74,59,92,.2);}
-#lastMark{position:absolute;inset:0;pointer-events:none;}
-#lastMark i{position:absolute;left:50%;top:-2px;width:4px;height:12px;margin-left:-2px;border-radius:2px;background:var(--ink);}
+/* 힘 막대: 방향키와 발사 버튼 사이 아래 (손가락에 안 가려지게) */
+#powerBar{position:absolute;left:calc(max(16px,env(safe-area-inset-left,0px)) + 174px);right:calc(max(16px,env(safe-area-inset-right,0px)) + 110px);
+  bottom:calc(22px + env(safe-area-inset-bottom,0px));max-width:480px;margin-inline:auto;display:flex;align-items:center;gap:8px;
+  background:rgba(255,250,240,.93);border-radius:999px;padding:6px 12px;box-shadow:0 3px 0 rgba(74,59,92,.16);font-size:15px;}
+#powerBar .pb{position:relative;flex:1;height:16px;border-radius:8px;background:var(--soft);overflow:hidden;}
+#powerFill{display:block;height:100%;width:0;border-radius:8px;background:linear-gradient(90deg,#ffd34d,#ff9f2e,#ff5a7a);}
+#powerLast{position:absolute;top:0;bottom:0;width:3px;border-radius:2px;background:var(--ink);}
+#powerBar em{font-style:normal;min-width:2.2em;text-align:right;font-variant-numeric:tabular-nums;}
+@media (orientation:portrait){#powerBar{left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(180px + env(safe-area-inset-bottom,0px));}}
 
 /* 차례 알림 */
 #banner{position:absolute;left:50%;top:24%;transform:translate(-50%,-20px) scale(.9);opacity:0;transition:all .25s cubic-bezier(.3,1.6,.6,1);
@@ -145,8 +156,9 @@ body.in-menu .hud-top,body.in-menu .controls{display:none;}
     </div>
     <div class="fire-wrap">
       <button id="weaponBtn">콩알탄 <em>∞</em></button>
-      <button id="fireBtn" aria-label="꾹 누르면 힘이 모이고, 떼면 발사"><span>발사</span><div id="lastMark" hidden><i></i></div></button>
+      <button id="fireBtn" aria-label="꾹 누르면 힘이 모이고, 떼면 발사. 둘레는 남은 시간"><span>발사<small id="timeNum"></small></span></button>
     </div>
+    <div id="powerBar" aria-label="발사 힘"><span>힘</span><div class="pb"><i id="powerFill"></i><b id="powerLast" hidden></b></div><em id="powerNum">0</em></div>
   </div>
 
   <div id="banner"><canvas id="bannerAva" width="96" height="96"></canvas><span id="bannerText"></span></div>
@@ -214,7 +226,7 @@ const canControl=p=>!!p&&p.ai==='human'&&p.owner===net.myId;
 // ---------- 놀이 규칙 숫자 ----------
 const H=560;            // 세상 높이 (가로는 화면 비율에 맞춰 정함)
 let W=1000;
-const G=0.22, WIND_K=0.0035, MAXV=15.5, R=25, TUBE=R*1.45, BAG=4;
+const G=0.22, WIND_K=0.0035, MAXV=15.5, R=25, TUBE=R*1.45, BAG=4, TURN_T=40*60; // 한 차례 40초
 const ANIMALS=[
   {id:'rabbit', name:'토끼',   body:'#ffb8cc', dark:'#ff7fa5', shot:'당근'},
   {id:'bear',   name:'곰돌이', body:'#e9b47f', dark:'#c98a52', shot:'꿀단지'},
@@ -456,13 +468,13 @@ function drawChar(c,x,fy,r,ai,o){
   else if(mood==='focus'){jx=(Math.random()-.5)*(o.power||0)/100*r*.14;sy=.95+.03*Math.sin(t*.5);sx=1.03;tilt=0;}
   else if(mood==='faint'){tilt=-dir*.22;sy=.9;sx=1.04;}
   if(o.hurt){const k=o.hurt/24;sx*=1+Math.sin(o.hurt*.9)*.1*k;sy*=1-Math.sin(o.hurt*.9)*.1*k;jx+=Math.sin(o.hurt*1.7)*r*.12*k;}
-  const cx=x+jx, cy=fy-r-bob;
+  const lean=o.lean||0, cx=x+jx+Math.sin(lean)*r, cy=fy-bob-Math.cos(lean)*r; // lean: 비탈에 선 기울기
   c.save();
   if(mood==='faint')c.globalAlpha=.85;
   const sh=Math.max(.4,1-bob/(r*1.2));
   ell(c,x,fy+r*.03,r*1.05*sh,r*.22*sh,0,'rgba(74,59,92,.18)');
   if(o.angle!=null&&mood!=='faint')drawCannon(c,cx,cy+r*.1,r,o.angle,o.glow,t);
-  c.save();c.translate(cx,fy-bob);c.rotate(tilt);c.scale(sx,sy);c.translate(0,-r);
+  c.save();c.translate(x+jx,fy-bob);c.rotate(tilt+lean);c.scale(sx,sy);c.translate(0,-r);
   drawBody(c,r,A,dir,mood,t,ph);
   c.restore();
   if(o.angle!=null&&mood!=='faint'){ // 대포를 잡은 앞발
@@ -704,8 +716,9 @@ function drawShell(c,s){
       break;}
   }
   c.restore();
-  if(s.y<-10){ // 화면 위로 나가면 화살표로 위치 알려 주기
-    c.beginPath();c.moveTo(s.x,6);c.lineTo(s.x-9,22);c.lineTo(s.x+9,22);c.closePath();c.fillStyle=A.dark;c.fill();
+  const topW=Math.max(0,-view.oy/view.s); // 화면에 보이는 맨 위
+  if(s.y<topW-10){ // 화면 위로 나가면 화살표로 위치 알려 주기
+    c.beginPath();c.moveTo(s.x,topW+6);c.lineTo(s.x-9,topW+22);c.lineTo(s.x+9,topW+22);c.closePath();c.fillStyle=A.dark;c.fill();
   }
 }
 
@@ -961,7 +974,10 @@ function explode(x,y,s){
       const k=1-d/reach;
       hurt(p,Math.max(1,Math.round(w.dmg*mult*(.35+.65*k))));
       if(p===owner)hitSelf=true; else if(p.team!==owner.team)hitOther=true;
-    }else if(d<reach*2.2&&p.moodT<=0){setMood(p,'surprised',50);}
+    }else{
+      if(Math.abs(p.x-x)<r+14)disturb(p,rand(3,8)); // 맞진 않았지만 발밑이 파였어요
+      if(d<reach*2.2&&p.moodT<=0)setMood(p,'surprised',50);
+    }
   }
   if(owner.alive){
     if(hitOther&&!hitSelf)setMood(owner,'happy',130);
@@ -996,7 +1012,13 @@ function hurt(p,dmg){
   p.hp=Math.max(0,p.hp-dmg); p.hurt=24;
   addText('-'+dmg,p.x,p.y-R*3.2,'#ff5a7a',26);
   if(p.hp<=0){p.alive=false;addText('기절~',p.x,p.y-R*4.3,'#9b8cff',22);setTimeout(sfx.faint,150);}
-  else{setMood(p,'sad',150);setTimeout(sfx.ouch,80);}
+  else{setMood(p,'sad',150);setTimeout(sfx.ouch,80);disturb(p,rand(6,14));}
+}
+function disturb(p,amt){ // 맞거나 발밑 땅이 파이면 대포 각도가 틀어져요
+  const before=p.elev;
+  p.elev=clamp(p.elev+amt*(Math.random()<.5?-1:1),0,90);
+  const d=Math.round(p.elev-before);
+  if(d)addText('각도 '+(d>0?'+':'−')+Math.abs(d)+'°',p.x+R*1.7,p.y-R*1.4,'#7a6be0',16);
 }
 function updatePillars(){ // 불기둥: 떨어진 곳에서 불길이 하늘로 치솟아요
   for(const pl of game.pillars){
@@ -1139,6 +1161,8 @@ function update(){
     const g=standY(p.x);
     if(p.y<g-.5){p.vy+=.35;p.y=Math.min(g,p.y+p.vy);}else{p.y=g;p.vy=0;}
     if(p.hurt>0)p.hurt--;
+    const sl=Math.atan2(groundAt(p.x+12)-groundAt(p.x-12),24); // 발밑 땅 기울기를 천천히 따라가요
+    p.tilt=(p.tilt||0)*.85+clamp(sl,-.45,.45)*.15;
     if(p.moodT>0)p.moodT--;
     if(p.pop&&--p.pop.t<=0)p.pop=null;
     if(p.alive&&p.moodT>0&&p.mood==='happy'&&game.tick%14===0)
@@ -1165,7 +1189,7 @@ function update(){
   const p=cur();
   switch(game.state){
     case 'banner':
-      if(--game.timer<=0){$('#banner').classList.remove('show');game.state='aim';if(!isHuman(p)&&isHost())aiPlan(p);updateHud(true);}
+      if(--game.timer<=0){$('#banner').classList.remove('show');game.state='aim';game.timeLeft=TURN_T;if(!isHuman(p)&&isHost())aiPlan(p);updateHud(true);}
       break;
     case 'aim':
       if(canControl(p)){
@@ -1204,6 +1228,12 @@ function update(){
       if(game.tick%200===0){const q=players[Math.floor(Math.random()*players.length)];setMood(q,['happy','surprised','sad'][Math.floor(rand(0,3))],100);q.hurt=q.mood==='sad'?24:0;}
       break;
   }
+  // 사람 차례 제한 시간 (컴퓨터는 없음). 끝나는 판정은 방장 폰이 해요
+  if((game.state==='aim'||game.state==='charging')&&isHuman(cur())&&game.timeLeft>0){
+    game.timeLeft--;
+    if(game.timeLeft%60===0&&game.timeLeft>0&&game.timeLeft<=5*60&&canControl(cur()))sfx.click();
+    if(game.timeLeft===0&&isHost())timeUp();
+  }
   // 조준 중인 모습을 다른 폰에도 보내기
   if(isOnline()&&(game.state==='aim'||game.state==='charging')&&game.tick%4===0){
     const q=cur();
@@ -1211,6 +1241,13 @@ function update(){
       send({t:'aim',i:game.turn,x:q.x,y:q.y,dir:q.dir,elev:q.elev,fuel:q.fuel,power:game.power,charging:game.state==='charging',weapon:game.weapon});
   }
   updateHud(false);
+}
+function timeUp(){ // 시간 끝: 힘을 모으던 중이면 그대로 쏘고, 아니면 다음 친구 차례
+  const p=cur();
+  addText('시간 끝!',p.x,p.y-R*4.3,'#ff6f96',26);
+  $('#fireBtn').classList.remove('on');
+  if(game.state==='charging')hostFire({i:game.turn,power:Math.max(5,game.power),x:p.x,dir:p.dir,elev:p.elev,weapon:game.weapon});
+  else nextTurn();
 }
 function move(p,d){
   if(p.dir!==d){p.dir=d;}
@@ -1249,9 +1286,12 @@ function layoutCanvas(){
 }
 function layout(){
   layoutCanvas();
-  const cw=view.cw||W, ch=view.ch||H, s=Math.min(cw/W,ch/H);
-  let oy=(ch-H*s)/2;
+  const cw=view.cw||W, ch=view.ch||H;
+  let s=Math.min(cw/W,ch/H), oy=(ch-H*s)/2;
   if(ch>cw){const spare=ch-H*s; oy=Math.min(spare,60+Math.max(0,(spare-280)/2));}
+  else if(cw/W>ch/H){ // 옆으로 긴 폰: 양옆 끝까지 채우고, 남는 만큼 위쪽 하늘을 잘라요 (20%까지)
+    s=Math.min(cw/W,ch/(H*.8)); oy=ch-H*s;
+  }
   view.s=s; view.ox=(cw-W*s)/2; view.oy=oy;
 }
 function drawSun(){
@@ -1438,7 +1478,7 @@ function drawPlayers(){
       ctx.save();ctx.globalAlpha=.28;ball(ctx,p.x,p.y-R,R*1.6*wob,R*1.5/wob,'#86cbff');ctx.restore();
       ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(p.x,p.y-R,R*1.6*wob,R*1.5/wob,0,0,TAU);ctx.stroke();
     }
-    drawChar(ctx,p.x,p.y,R,p.animal,{dir:p.dir,angle:worldAngle(p),mood,t:game.tick,phase:p.phase,
+    drawChar(ctx,p.x,p.y,R,p.animal,{dir:p.dir,angle:worldAngle(p),mood,t:game.tick,phase:p.phase,lean:p.tilt||0,
       power:p===turnP?game.power:0,hurt:p.hurt,hpLow:p.hp<30,glow:p===turnP&&game.fx.power});
     // 이름표와 체력
     const ty=p.y-R*3.35;
@@ -1471,7 +1511,8 @@ function drawPlayers(){
   if(turnP&&isHuman(turnP)&&(game.state==='aim'||game.state==='charging')){
     const a=worldAngle(turnP),x0=turnP.x+Math.cos(a)*(TUBE+8),y0=turnP.y-R+R*.1-Math.sin(a)*(TUBE+8);
     ctx.fillStyle='rgba(74,59,92,.45)';
-    for(let i=1;i<=6;i++){ctx.beginPath();ctx.arc(x0+Math.cos(a)*i*11,y0-Math.sin(a)*i*11,3-i*.25,0,TAU);ctx.fill();}
+    for(let i=1;i<=14;i++){ctx.globalAlpha=1-i/16;ctx.beginPath();ctx.arc(x0+Math.cos(a)*i*12,y0-Math.sin(a)*i*12,3.4-i*.13,0,TAU);ctx.fill();}
+    ctx.globalAlpha=1;
   }
 }
 function drawParts(smoke){
@@ -1527,6 +1568,11 @@ function render(){
   ctx.restore();
   const bottom=oy+H*s;
   if(bottom<ch){ctx.fillStyle=theme.soil[2];ctx.fillRect(0,bottom-1,cw,ch-bottom+1);}
+  if(ox>1){ // 그래도 양옆이 남으면 땅을 이어 그려요
+    const yl=oy+ground[0]*s, yr=oy+ground[W-1]*s, xr=ox+W*s;
+    ctx.fillStyle=theme.soil[0];ctx.fillRect(0,yl,ox+1,ch-yl);ctx.fillRect(xr-1,yr,cw-xr+1,ch-yr);
+    ctx.fillStyle=theme.grass[0];ctx.fillRect(0,yl-4,ox+1,8);ctx.fillRect(xr-1,yr-4,cw-xr+1,8);
+  }
 }
 
 // ---------- 화면 위 글자·버튼 ----------
@@ -1577,9 +1623,14 @@ function updateHud(force){
   const shotName=W_.id==='basic'?ANIMALS[p.animal].shot:W_.name;
   const wl=shotName+'|'+(left===Infinity?'∞':'×'+left);
   if(hudCache.wl!==wl){hudCache.wl=wl;$('#weaponBtn').innerHTML=shotName+' <em>'+(left===Infinity?'∞':'×'+left)+'</em>';}
-  const fb=$('#fireBtn'); fb.style.setProperty('--p',game.state==='charging'?game.power.toFixed(1):0);
-  const lm=$('#lastMark');
-  if(p.lastPower!=null){lm.hidden=false;lm.style.transform='rotate('+(p.lastPower*3.6)+'deg)';}else lm.hidden=true;
+  // 발사 버튼 둘레 = 남은 시간, 아래 막대 = 힘
+  const fb=$('#fireBtn'), tl=game.timeLeft||0, tf=isHuman(p)&&(game.state==='aim'||game.state==='charging')?tl/TURN_T:0;
+  fb.style.setProperty('--p',(tf*100).toFixed(1));fb.style.setProperty('--tc',tl<10*60?'#ff6f96':'#6fe0b8');
+  setText($('#timeNum'),'tm',tf>0?Math.ceil(tl/60)+'초':'');
+  const pw=game.state==='charging'?game.power:0;
+  $('#powerFill').style.width=pw+'%';setText($('#powerNum'),'pw',String(Math.round(pw)));
+  const pl=$('#powerLast');
+  if(p.lastPower!=null){pl.hidden=false;pl.style.left='calc('+p.lastPower+'% - 1.5px)';}else pl.hidden=true;
   renderItemBar(p);
 }
 
@@ -1913,7 +1964,23 @@ demo();
 playMusic('lobby');
 // 홍보 그림 찍기용: 주소 끝에 ?shot=korea 처럼 지도 이름을 붙이면 꾸며 둔 놀이 장면에서 멈춰요
 let frozen=false;
+function drawIcon(c){ // 홈 화면 아이콘: 하늘·언덕 위에서 대포를 든 토끼
+  const g=c.createLinearGradient(0,0,0,512);g.addColorStop(0,'#86d2ff');g.addColorStop(1,'#e6f7ff');
+  c.fillStyle=g;c.fillRect(0,0,512,512);
+  ball(c,92,92,38,38,'#ffd84d');
+  ell(c,330,86,46,26,0,'rgba(255,255,255,.95)');ell(c,370,74,40,30,0,'rgba(255,255,255,.95)');
+  c.beginPath();c.moveTo(0,512);c.lineTo(0,390);c.quadraticCurveTo(256,330,512,395);c.lineTo(512,512);c.closePath();c.fillStyle='#f6b277';c.fill();
+  c.strokeStyle='#76d35c';c.lineWidth=16;c.beginPath();c.moveTo(0,390);c.quadraticCurveTo(256,330,512,395);c.stroke();
+  drawChar(c,240,392,100,0,{dir:1,angle:.62,mood:'excited',t:30,phase:0});
+  for(let i=0;i<4;i++)ell(c,392+i*10,196-i*13,6+i*1.5,6+i*1.5,0,'rgba(255,255,255,'+(.55+i*.12)+')'); // 연기 꼬리
+  drawShell(c,{x:440,y:132,vx:2,vy:-2.4,spin:0,w:{id:'big'},owner:{animal:0}});
+}
 function setupShot(id){
+  if(id==='icon'){
+    document.body.innerHTML='';
+    const c=document.createElement('canvas');c.width=c.height=512;c.style.cssText='position:fixed;left:0;top:0;width:512px;height:512px';
+    document.body.appendChild(c);drawIcon(c.getContext('2d'));frozen=true;return;
+  }
   slots=[0,2,1,4,5].map((a,i)=>({type:'normal',animal:a,name:ANIMALS[a].name,team:i%2}));
   setupOpt.map=id;setupOpt.team=id==='holland';
   startPlay();
