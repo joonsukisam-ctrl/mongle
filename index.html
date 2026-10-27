@@ -131,9 +131,15 @@ body.in-menu .hud-top,body.in-menu .controls{display:none;}
 .slot .ava:disabled{cursor:default;}
 #startBtn:disabled{opacity:.65;}
 @media (prefers-reduced-motion:reduce){#banner{transition:none;}}
+#tapStart{position:absolute;inset:0;z-index:60;border:0;margin:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  background:rgba(74,59,92,.55);color:#fff;font-family:var(--font);font-size:30px;text-shadow:0 3px 0 rgba(74,59,92,.5);touch-action:manipulation;cursor:pointer;}
+#tapStart b{font-weight:400;background:#ff8fb1;border-radius:999px;padding:14px 34px;box-shadow:0 6px 0 #e0577f;animation:tapPulse 1s infinite;}
+#tapStart small{font-size:17px;opacity:.95;}
+@keyframes tapPulse{50%{transform:scale(1.08);}}
 </style>
 
 <div id="app">
+  <button id="tapStart" hidden><b>화면을 톡! 눌러서 시작</b><small>폰을 옆으로 눕히면 크게 보여요</small></button>
   <canvas id="cv" aria-label="놀이 화면"></canvas>
 
   <div class="hud-top">
@@ -210,6 +216,16 @@ body.in-menu .hud-top,body.in-menu .controls{display:none;}
 (()=>{
 'use strict';
 const $=s=>document.querySelector(s);
+// 친구 폰은 '시작'을 직접 누르지 않아서 가로 화면·화면 꺼짐 방지가 안 켜져요 → 한 번 톡 누르게 해요
+let tapDone=false;
+function goFull(){
+  try{const el=document.documentElement;if(el.requestFullscreen&&!document.fullscreenElement)el.requestFullscreen().then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{})).catch(()=>{});}catch(_){}
+  try{if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{});}catch(_){}
+}
+function askTap(){if(!tapDone&&!document.fullscreenElement)$('#tapStart').hidden=false;}
+document.addEventListener('DOMContentLoaded',()=>{});
+setTimeout(()=>{const b=$('#tapStart');if(!b)return;b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();tapDone=true;b.hidden=true;try{audio();}catch(_){}goFull();});},0);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tapDone)try{if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{});}catch(_){}}); // 다른 앱 갔다 오면 다시 화면 켜 두기
 const TAU=Math.PI*2;
 const rand=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1797,7 +1813,7 @@ function onData(m,conn){
     else if(m.t==='fire'&&owns)hostFire(m);
     else if(m.t==='item'&&owns&&m.i===game.turn&&game.state==='aim'){useItem(p,m.idx|0);sendSnap();}
   }else if(net.mode==='guest'){
-    if(m.t==='snap'){if(!$('#setup').hidden||!$('#result').hidden||!game||game.state==='demo')enterPlayScreen();applySnap(m.s);}
+    if(m.t==='snap'){if(!$('#setup').hidden||!$('#result').hidden||!game||game.state==='demo'){enterPlayScreen();askTap();}applySnap(m.s);}
     else if(m.t==='aim')applyAim(m);
     else if(m.t==='shot'){if(game&&game.state!=='demo')startShot(m);}
     else if(m.t==='lobby')joinStatus('같이 하는 친구: '+m.list.map(s=>s.name+(s.type==='human'?'(방장 폰)':s.type==='remote'?'':'(컴퓨터)')).join(', '));
@@ -1855,7 +1871,8 @@ function openRoom(){
 function hostHello(m,conn){
   if($('#setup').hidden){conn.send({t:'busy'});setTimeout(()=>conn.close(),500);return;}
   if(slots.some(s=>s.type==='remote'&&s.owner===conn.peer))return;
-  let i=slots.findIndex((s,k)=>k>0&&s.type==='none');                         // 빈 칸 먼저
+  let i=slots.findIndex((s,k)=>k>0&&s.type==='human');                        // 방장 폰의 남는 '사람' 칸 먼저 (안 그러면 그 차례마다 방장 폰에서 쏘기를 기다려요)
+  if(i<0)i=slots.findIndex((s,k)=>k>0&&s.type==='none');                      // 다음은 빈 칸
   if(i<0)i=slots.findIndex((s,k)=>k>0&&(s.type==='easy'||s.type==='normal')); // 다음은 컴퓨터 칸
   if(i<0)i=slots.findIndex((s,k)=>k>0&&s.type!=='remote');
   if(i<0){conn.send({t:'full'});setTimeout(()=>conn.close(),500);return;}
@@ -1865,7 +1882,8 @@ function hostHello(m,conn){
 }
 function sendLobby(){
   const n=slots.filter(s=>s.type==='remote').length, st=$('#hostStatus');
-  if(st)st.textContent=n?'친구 폰 '+n+'대가 들어왔어요':'친구를 기다리는 중…';
+  const extra=slots.filter((s,k)=>k>0&&s.type==='human').length;
+  if(st)st.textContent=(n?'친구 폰 '+n+'대가 들어왔어요':'친구를 기다리는 중…')+(extra?' · 이 폰에서 할 사람 칸 '+(extra+1)+'개 (차례마다 이 폰으로 쏴요)':'');
   send({t:'lobby',list:slots.filter(s=>s.type!=='none').map(s=>({name:s.name,animal:s.animal,type:s.type}))});
 }
 function hostLost(conn){

@@ -101,9 +101,15 @@ body:not(.can-move) .controls{opacity:.35;pointer-events:none;}
 #roomBox input{border:0;border-radius:12px;background:var(--soft);text-align:center;font:inherit;font-size:28px;letter-spacing:6px;padding:6px;width:160px;color:var(--ink);}
 #roomBox p{margin:0;font-size:14px;}
 @media (prefers-reduced-motion:reduce){#banner{transition:none;}#needleBtn.ready{animation:none;}}
+#tapStart{position:absolute;inset:0;z-index:60;border:0;margin:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  background:rgba(74,59,92,.55);color:#fff;font-family:var(--font);font-size:30px;text-shadow:0 3px 0 rgba(74,59,92,.5);touch-action:manipulation;cursor:pointer;}
+#tapStart b{font-weight:400;background:#ff8fb1;border-radius:999px;padding:14px 34px;box-shadow:0 6px 0 #e0577f;animation:tapPulse 1s infinite;}
+#tapStart small{font-size:17px;opacity:.95;}
+@keyframes tapPulse{50%{transform:scale(1.08);}}
 </style>
 
 <div id="app">
+  <button id="tapStart" hidden><b>화면을 톡! 눌러서 시작</b><small>폰을 옆으로 눕히면 크게 보여요</small></button>
   <canvas id="cv" aria-label="놀이 화면"></canvas>
   <button class="icon-btn" id="menuBtn" aria-label="멈춤 메뉴">II</button>
 
@@ -169,6 +175,16 @@ body:not(.can-move) .controls{opacity:.35;pointer-events:none;}
 (()=>{
 'use strict';
 const $=s=>document.querySelector(s);
+// 친구 폰은 '시작'을 직접 누르지 않아서 가로 화면·화면 꺼짐 방지가 안 켜져요 → 한 번 톡 누르게 해요
+let tapDone=false;
+function goFull(){
+  try{const el=document.documentElement;if(el.requestFullscreen&&!document.fullscreenElement)el.requestFullscreen().then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{})).catch(()=>{});}catch(_){}
+  try{if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{});}catch(_){}
+}
+function askTap(){if(!tapDone&&!document.fullscreenElement)$('#tapStart').hidden=false;}
+document.addEventListener('DOMContentLoaded',()=>{});
+setTimeout(()=>{const b=$('#tapStart');if(!b)return;b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();tapDone=true;b.hidden=true;try{audio();}catch(_){}goFull();});},0);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tapDone)try{if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{});}catch(_){}}); // 다른 앱 갔다 오면 다시 화면 켜 두기
 const TAU=Math.PI*2;
 const rand=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1352,7 +1368,7 @@ function sendSnap(){
     ev:game.evq.splice(0)});
 }
 function guestStart(m){
-  enterPlayScreen();
+  enterPlayScreen();askTap();
   setTheme(m.theme);
   grid=new Uint8Array(NT);itemG=new Uint8Array(NT);hidG=new Uint8Array(NT);
   players=m.players.map(q=>({...q,x:0,y:0,rx:0,ry:0,dir:1,moving:false,nb:1,rng:2,spd:0,ndl:0,trap:0,out:false,inv:0,mood:'idle',moodT:0,pv:0}));
