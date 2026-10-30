@@ -218,13 +218,18 @@ body.in-menu .hud-top,body.in-menu .controls{display:none;}
 const $=s=>document.querySelector(s);
 // 친구 폰은 '시작'을 직접 누르지 않아서 가로 화면·화면 꺼짐 방지가 안 켜져요 → 한 번 톡 누르게 해요
 let tapDone=false;
+// 폰 터치는 pointerdown 때 '사람이 눌렀다'로 안 쳐줘서 전체 화면이 거절돼요 → click(손을 뗄 때)에서 불러요
+function isFull(){return !!(document.fullscreenElement||document.webkitFullscreenElement);}
 function goFull(){
-  try{const el=document.documentElement;if(el.requestFullscreen&&!document.fullscreenElement)el.requestFullscreen().then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{})).catch(()=>{});}catch(_){}
+  try{const el=document.documentElement, rq=el.requestFullscreen||el.webkitRequestFullscreen;
+    const lock=()=>{try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(()=>{});}catch(_){}};
+    if(rq&&!isFull()){const p=rq.call(el);if(p&&p.then)p.then(lock).catch(()=>{});else setTimeout(lock,300);}}catch(_){}
   try{if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{});}catch(_){}
 }
-function askTap(){if(!tapDone&&!document.fullscreenElement)$('#tapStart').hidden=false;}
+function askTap(){if(!tapDone&&!isFull())$('#tapStart').hidden=false;}
+document.addEventListener('fullscreenchange',()=>{if(!isFull())tapDone=false;}); // 전체 화면이 풀리면 다음 판에 다시 톡 버튼
 document.addEventListener('DOMContentLoaded',()=>{});
-setTimeout(()=>{const b=$('#tapStart');if(!b)return;b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();tapDone=true;b.hidden=true;try{audio();}catch(_){}goFull();});},0);
+setTimeout(()=>{const b=$('#tapStart');if(!b)return;b.addEventListener('pointerdown',e=>e.stopPropagation());b.addEventListener('pointerup',e=>e.stopPropagation());b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();tapDone=true;b.hidden=true;try{audio();}catch(_){}goFull();});},0);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tapDone)try{if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{});}catch(_){}}); // 다른 앱 갔다 오면 다시 화면 켜 두기
 const TAU=Math.PI*2;
 const rand=(a,b)=>a+Math.random()*(b-a);
@@ -1905,7 +1910,7 @@ function joinRoom(){
   if(!window.Peer){noPeer();return;}
   const inp=$('#codeIn'), code=(inp?inp.value:'').replace(/\D/g,'');
   if(code.length!==4){joinStatus('번호 4자리를 넣어 주세요');return;}
-  audio();
+  audio();goFull();
   if(net.peer)leaveRoom();
   joinStatus('연결하는 중…');
   let peer;
