@@ -982,6 +982,7 @@ function stepShell(s,ghost){
 }
 
 function explode(x,y,s){
+  if(r3)boom3D(x,y,s);
   const w=s.w, owner=s.owner, mult=s.power?1.5:1, r=w.r*(s.power?1.2:1);
   for(let i=Math.max(0,Math.floor(x-r));i<=Math.min(W-1,Math.ceil(x+r));i++){
     const h=Math.sqrt(Math.max(0,r*r-(i-x)*(i-x))), top=y-h, bot=y+h, g=ground[i];
@@ -1317,6 +1318,7 @@ function layout(){
     s=Math.min(cw/W,ch/(H*.8)); oy=ch-H*s;
   }
   view.s=s; view.ox=(cw-W*s)/2; view.oy=oy;
+  view.bs=s; view.box=view.ox; view.boy=oy; // 카메라 연출 전 기본 배치
 }
 function drawSun(){
   const x=W-110,y=78,t=game.tick*.01;
@@ -1566,6 +1568,7 @@ function drawTexts(){
   ctx.globalAlpha=1;
 }
 function render(){
+  if(game&&r3)applyCam();
   const {s,ox,oy,dpr,cw,ch}=view;
   // 뒤 판: 하늘과 먼 풍경
   ctx=ctxB;
@@ -1581,9 +1584,9 @@ function render(){
   for(const c of clouds)drawCloud(c.x,c.y,c.s);
   drawDecoDyn();
   ctx.restore();
-  // 가운데 판: 3D 땅과 캐릭터 (캐릭터 자리는 아래 drawPlayers에서 맞춰요)
+  // 가운데 판: 3D 땅·캐릭터·포탄 (캐릭터 자리는 아래 drawPlayers에서 맞춰요)
   if(terrainDirty){terrainDirty=false;if(r3)build3DTerrain();else renderTerrain();}
-  // 앞 판: 포탄·효과·글자
+  // 앞 판: 연기·효과·글자
   ctx=ctxF;
   ctx.save();
   ctx.translate(ox+sx*s,oy+sy*s);ctx.scale(s,s);
@@ -1593,16 +1596,14 @@ function render(){
   drawPillars();
   drawPlayers();
   drawParts(true);
-  for(const sh of game.shells)drawShell(ctx,sh);
+  for(const sh of game.shells){if(r3)shellArrow(ctx,sh);else drawShell(ctx,sh);}
   drawParts(false);
   drawWeather();
   if(game.bird)drawBird(ctx,game.bird,game.tick);
   drawTexts();
   ctx.restore();
   if(r3){
-    for(const p of players)if(p._m)p._m.a.root.userData.player=p;
-    for(const ch3 of level.children){const pl=ch3.userData.player;if(pl&&!players.includes(pl))ch3.visible=false;}
-    for(const p of prevPlayers)if(!players.includes(p)&&p._m){level.remove(p._m.a.root);level.remove(p._m.a.shadow);level.remove(p._m.cannon);p._m=null;}
+    for(const p of prevPlayers)if(!players.includes(p)&&p._m){level.remove(p._m.a.root);level.remove(p._m.cannon);p._m=null;}
     prevPlayers=players.slice();
     render3D(sx,sy);
     return;
@@ -1618,146 +1619,251 @@ function render(){
 let prevPlayers=[];
 
 
-// ---------- 3D: 땅과 캐릭터 (나머지는 2D 그대로) ----------
-// 2D 세상 좌표(x 오른쪽, y 아래)를 3D(x 오른쪽, y 위)로 그대로 옮기고, 카메라를 살짝 내려다보게 기울여
-// 땅 윗면과 옆면이 입체로 보여요. 카메라 기울기만큼 세로를 늘려서 z=0 면은 2D와 딱 맞아요.
+// ---------- 3D (땅·캐릭터·포탄) ----------
+// 2D 세상 좌표(x 오른쪽, y 아래)를 3D(x 오른쪽, y 위)로 그대로 옮기고, 카메라를 살짝 내려다보게 기울여요.
+// 카메라 기울기만큼 세로를 늘려서 z=0 면(캐릭터가 서 있는 줄)은 2D 판정·글자와 딱 맞아요.
 let r3=null;
-try{r3=new THREE.WebGLRenderer({canvas:$('#cv3'),antialias:true,alpha:true});r3.setPixelRatio(Math.min(2,window.devicePixelRatio||1));r3.setClearColor(0x000000,0);}
-catch(e){r3=null;}
+try{
+  r3=new THREE.WebGLRenderer({canvas:$('#cv3'),antialias:true,alpha:true});
+  r3.setPixelRatio(Math.min(1.75,window.devicePixelRatio||1));r3.setClearColor(0x000000,0);
+  r3.shadowMap.enabled=true;r3.shadowMap.type=THREE.PCFSoftShadowMap;
+}catch(e){r3=null;}
 const scene=new THREE.Scene();
 const cam3=new THREE.OrthographicCamera(-1,1,1,-1,1,6000);
-const PITCH=.32, ZB=-70, ZF=46; // 기울기, 땅 뒤쪽·앞쪽 깊이
-scene.add(new THREE.HemisphereLight('#ffffff','#b9a7d6',.78));
-const sun3=new THREE.DirectionalLight('#fff4e0',.6);sun3.position.set(-300,700,900);scene.add(sun3);
+const PITCH=.34, ZB=-80, ZF=48; // 기울기, 땅 뒤쪽·앞쪽 깊이
+scene.add(new THREE.HemisphereLight('#ffffff','#c9b6e6',.62));
+const sun3=new THREE.DirectionalLight('#fff1dc',.78);
+sun3.castShadow=true;sun3.shadow.mapSize.set(1024,1024);sun3.shadow.bias=-.0006;sun3.shadow.radius=3;
+scene.add(sun3);scene.add(sun3.target);
+function aimSun(){ // 해는 왼쪽 앞 위에서: 그림자가 캐릭터 오른쪽 뒤 땅에 생겨요
+  sun3.position.set(W*.3,620,560);sun3.target.position.set(W*.52,-H*.55,0);
+  const c=sun3.shadow.camera;c.left=-W*.75;c.right=W*.75;c.top=H*.95;c.bottom=-H*.95;c.near=10;c.far=2600;c.updateProjectionMatrix();
+}
 let level=new THREE.Group();scene.add(level);
-const geo={box:new THREE.BoxGeometry(1,1,1),sph:new THREE.SphereGeometry(1,20,14),sphLo:new THREE.SphereGeometry(1,10,8),cyl:new THREE.CylinderGeometry(1,1,1,16),cone:new THREE.ConeGeometry(1,1,12),circle:new THREE.CircleGeometry(1,24),torus:new THREE.TorusGeometry(1,.18,10,28,Math.PI)};
+const geo={sph:new THREE.SphereGeometry(1,24,16),sphLo:new THREE.SphereGeometry(1,12,8),cyl:new THREE.CylinderGeometry(1,1,1,20),cone:new THREE.ConeGeometry(1,1,16),
+  torus:new THREE.TorusGeometry(1,.16,10,32),ring:new THREE.TorusGeometry(1,.06,6,40),oct:new THREE.OctahedronGeometry(1,0),ico:new THREE.IcosahedronGeometry(1,0),tuft:new THREE.ConeGeometry(1,1,5)};
+// 만화풍(툰) 색: 밝음·중간·그늘 세 단계로 딱딱 끊어져요
+const toonGrad=(()=>{const t=new THREE.DataTexture(new Uint8Array([120,195,255]),3,1,THREE.LuminanceFormat);t.minFilter=t.magFilter=THREE.NearestFilter;t.needsUpdate=true;return t;})();
 const matCache={};
-function mat(col,o){const k=col+(o?JSON.stringify(o):'');return matCache[k]||(matCache[k]=new THREE.MeshLambertMaterial(Object.assign({color:col},o||{})));}
-function mesh(g,col,sx,sy,sz,x,y,z,parent,o){const m=new THREE.Mesh(g,mat(col,o));m.scale.set(sx,sy,sz);m.position.set(x,y,z);(parent||level).add(m);return m;}
-const shadowMat=new THREE.MeshBasicMaterial({color:'#2a2040',transparent:true,opacity:.22,depthWrite:false});
-// 글자 그림 (표지판·이름표)
-function textTex(text,o={}){
-  const c=document.createElement('canvas'),x=c.getContext('2d'),fs=o.size||64,font=fs+'px "Jua","Malgun Gothic",sans-serif';
-  x.font=font;const w=Math.ceil(x.measureText(text).width)+fs*.8,h=Math.ceil(fs*1.5);
-  c.width=w;c.height=h;x.font=font;x.textAlign='center';x.textBaseline='middle';
-  if(o.bg){x.fillStyle=o.bg;rrect(x,0,0,w,h,h/2);x.fill();}
-  if(o.stroke){x.lineWidth=fs*.16;x.strokeStyle=o.stroke;x.lineJoin='round';x.strokeText(text,w/2,h/2+fs*.05);}
-  x.fillStyle=o.color||'#4a3b5c';x.fillText(text,w/2,h/2+fs*.05);
-  const t=new THREE.CanvasTexture(c);t.minFilter=THREE.LinearFilter;return{tex:t,ratio:w/h};
-}
-function sprite(text,h,o,parent){
-  const {tex,ratio}=textTex(text,o);
-  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));
-  s.scale.set(h*ratio,h,1);(parent||level).add(s);return s;
-}
-function sign(text,x,y,z,col,h){ // 기둥 달린 표지판
-  const g=new THREE.Group();g.position.set(x,y,z);level.add(g);
-  mesh(geo.cyl,'#c98f4f',.08,1.4,.08,0,.7,0,g);
-  const s=sprite(text,h||.7,{bg:col||'#fffaf0',color:'#4a3b5c',size:56},g);s.position.y=1.7;
-  return g;
+function mat(col,o){const k=col+(o?JSON.stringify(o):'');return matCache[k]||(matCache[k]=new THREE.MeshToonMaterial(Object.assign({color:col,gradientMap:toonGrad},o||{})));}
+const lineMat=new THREE.MeshBasicMaterial({color:'#4a3b5c',side:THREE.BackSide});
+function mesh(g,col,sx,sy,sz,x,y,z,parent,o,line){ // line: 외곽선 두께 (0이면 없음)
+  const m=new THREE.Mesh(g,mat(col,o));m.scale.set(sx,sy,sz);m.position.set(x,y,z);m.castShadow=true;(parent||level).add(m);
+  if(line){const l=new THREE.Mesh(g,lineMat);l.scale.setScalar(1+line);l.castShadow=false;m.add(l);}
+  return m;
 }
 
-// ---------- 동물 친구 (동그란 3D) ----------
-function makeAnimal(ai){
+// 얼굴: 2D 게임의 표정 그림(drawFace)을 몸 앞쪽 둥근 껍질에 그대로 입혀요 → 눈 깜빡·웃음·눈물이 2D와 같아요
+const FA=1.05, FB=.95, FS=256;
+const faceGeo=new THREE.SphereGeometry(1,40,28,Math.PI/2-FA,FA*2,Math.PI/2-FB,FB*2);
+function drawFace3(f,ai,dir,mood,t,ph){
+  const c=f.c.getContext('2d');c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,FS,FS);
+  c.setTransform(FS/(2*FA)*1.02,0,0,FS/(2*FB)*1.05,FS/2,FS/2); // 몸 반지름 1 = 그림 단위
+  drawFace(c,1,ANIMALS[ai],dir,mood,t,ph);
+  f.tex.needsUpdate=true;
+}
+function makeAnimal3(ai){
   const A=ANIMALS[ai],root=new THREE.Group(),body=new THREE.Group();root.add(body);
   const light=c=>'#'+new THREE.Color(c).lerp(new THREE.Color('#ffffff'),.45).getHexString();
-  mesh(geo.sph,A.body,.5,.47,.48,0,.5,0,body);
-  if(A.id==='penguin')mesh(geo.sph,'#ffffff',.36,.36,.2,0,.46,.33,body);
-  else mesh(geo.sph,light(A.body),.32,.26,.18,0,.36,.34,body);
-  const eyeY=A.id==='frog'?.86:.58, eyeX=A.id==='frog'?.2:.17, eyeZ=A.id==='frog'?.3:.43;
-  if(A.id==='frog')for(const s of[-1,1])mesh(geo.sph,A.body,.17,.16,.16,s*.2,.84,.16,body);
-  for(const s of[-1,1]){
-    mesh(geo.sphLo,'#3a2e4a',.07,.085,.05,s*eyeX,eyeY,eyeZ,body);
-    mesh(geo.sphLo,'#ffffff',.025,.025,.02,s*eyeX+.02,eyeY+.03,eyeZ+.04,body);
-    mesh(geo.sphLo,'#ff9fbf',.075,.04,.03,s*.3,.45,.38,body);
-    mesh(geo.sph,A.dark,.15,.08,.19,s*.2,.05,.08,body); // 발
-  }
-  const hands=[-1,1].map(s=>mesh(geo.sph,A.dark,.11,.1,.11,s*.47,.42,.08,body));
-  if(A.id==='chick'||A.id==='penguin'){const b=mesh(geo.cone,'#ff9a3d',.07,.14,.07,0,.48,.5,body);b.rotation.x=Math.PI/2;}
-  else mesh(geo.sphLo,'#8a3a4a',.05,.03,.03,0,.47,.47,body);
-  if(A.id==='rabbit')for(const s of[-1,1]){const e=mesh(geo.sph,A.body,.1,.3,.08,s*.17,1.08,-.02,body);e.rotation.z=-s*.15;mesh(geo.sph,'#ffc3d6',.05,.22,.04,s*.17,1.08,.03,body).rotation.z=-s*.15;}
-  if(A.id==='bear')for(const s of[-1,1])mesh(geo.sph,A.dark,.14,.14,.1,s*.32,.9,0,body);
-  if(A.id==='cat')for(const s of[-1,1]){const e=mesh(geo.cone,A.dark,.14,.3,.1,s*.27,.98,0,body);e.rotation.z=-s*.2;}
-  if(A.id==='chick')for(const k of[-1,0,1]){const e=mesh(geo.sph,A.dark,.05,.12,.05,k*.07,1.02,0,body);e.rotation.z=k*.4;}
-  // 동물마다 장식
-  if(A.id==='rabbit')mesh(geo.sph,'#ff4f86',.12,.07,.05,.12,.92,.25,body);
-  if(A.id==='frog'){const c=mesh(geo.cyl,'#ffbf1f',.15,.12,.15,0,1,0,body);}
-  if(A.id==='bear'||A.id==='penguin')mesh(geo.sph,A.id==='bear'?'#ff5a5a':'#ff8a3d',.12,.06,.05,0,.2,.45,body);
-  const sh=new THREE.Mesh(geo.circle,shadowMat);sh.rotation.x=-Math.PI/2;sh.scale.set(.45,.45,1);level.add(sh);
-  return{root,body,hands,shadow:sh};
+  const L=.045;
+  // 귀·뒤쪽 장식
+  if(A.id==='rabbit')for(const s of[-1,1]){const e=mesh(geo.sph,A.body,.1,.3,.08,s*.17,1.08,-.04,body,null,.1);e.rotation.z=-s*.15;const n=mesh(geo.sph,light(A.dark),.05,.22,.04,s*.17,1.08,.01,body);n.rotation.z=-s*.15;}
+  if(A.id==='bear')for(const s of[-1,1]){mesh(geo.sph,A.dark,.14,.14,.1,s*.32,.9,-.02,body,null,.1);mesh(geo.sph,light(A.body),.07,.07,.05,s*.32,.9,.05,body);}
+  if(A.id==='cat'){for(const s of[-1,1]){const e=mesh(geo.cone,A.dark,.14,.3,.1,s*.27,.98,-.02,body,null,.1);e.rotation.z=-s*.2;}
+    const tail=mesh(geo.cyl,A.dark,.06,.5,.06,-.5,.55,-.15,body,null,.12);tail.rotation.z=.9;}
+  if(A.id==='chick')for(const k of[-1,0,1]){const e=mesh(geo.sph,A.dark,.05,.13,.05,k*.07,1.02,-.02,body,null,.12);e.rotation.z=k*.4;}
+  if(A.id==='frog')for(const s of[-1,1])mesh(geo.sph,A.body,.15,.14,.14,s*.21,.86,-.02,body,null,.08);
+  // 몸·배·발·손
+  mesh(geo.sph,A.body,.5,.47,.48,0,.5,0,body,null,L);
+  if(A.id==='penguin')mesh(geo.sph,'#ffffff',.32,.2,.17,0,.22,.36,body);
+  else mesh(geo.sph,light(A.body),.27,.15,.15,0,.24,.37,body);
+  for(const s of[-1,1])mesh(geo.sph,A.dark,.15,.08,.19,s*.2,.05,.1,body,null,.08);
+  const hands=[-1,1].map(s=>mesh(geo.sph,A.dark,.11,.1,.11,s*.47,.42,.08,body,null,.1));
+  // 동물마다 장식 하나
+  if(A.id==='rabbit'){const g=new THREE.Group();g.position.set(.12,.93,.22);body.add(g);for(const s of[-1,1]){const w=mesh(geo.cone,'#ff4f86',.08,.16,.05,s*.09,0,0,g,null,.12);w.rotation.z=s*Math.PI/2;}mesh(geo.sph,'#ff4f86',.05,.05,.05,0,0,0,g);}
+  if(A.id==='bear'||A.id==='penguin'){const col=A.id==='bear'?'#ff5a5a':'#ff8a3d',g=new THREE.Group();g.position.set(0,.13,.45);body.add(g);for(const s of[-1,1]){const w=mesh(geo.cone,col,.07,.14,.05,s*.08,0,0,g,null,.12);w.rotation.z=s*Math.PI/2;}mesh(geo.sph,col,.045,.045,.04,0,0,0,g);}
+  if(A.id==='cat'){mesh(geo.torus,'#ff6f96',.36,.36,.5,0,.2,0,body).rotation.x=Math.PI/2;mesh(geo.sph,'#ffcf3d',.07,.07,.07,0,.12,.43,body,null,.12);}
+  if(A.id==='chick'){const h=mesh(geo.sph,'#fffaf0',.24,.13,.22,.1,.97,-.02,body,null,.08);h.rotation.z=-.25;}
+  if(A.id==='frog'){const g=new THREE.Group();g.position.set(0,.99,-.02);body.add(g);mesh(geo.cyl,'#ffc93d',.15,.08,.15,0,0,0,g,null,.1);for(let k=0;k<5;k++){const a=k/5*Math.PI*2;mesh(geo.cone,'#ffc93d',.035,.1,.035,Math.cos(a)*.13,.08,Math.sin(a)*.13,g);}}
+  // 얼굴 껍질
+  const fc=document.createElement('canvas');fc.width=fc.height=FS;
+  const tex=new THREE.CanvasTexture(fc);tex.anisotropy=4;
+  const face=new THREE.Mesh(faceGeo,new THREE.MeshToonMaterial({map:tex,transparent:true,depthWrite:false,gradientMap:toonGrad}));
+  face.scale.set(.5*1.012,.47*1.012,.48*1.012);face.position.set(0,.5,0);face.renderOrder=2;body.add(face);
+  // 기절하면 머리 위에 도는 별
+  const stars=new THREE.Group();stars.position.set(0,1.25,0);body.add(stars);stars.visible=false;
+  for(let k=0;k<3;k++)mesh(geo.oct,'#ffd34d',.08,.08,.08,0,0,0,stars,{emissive:'#7a5a00'});
+  return{root,body,hands,stars,face:{c:fc,tex,key:''}};
+}
+// 대포: 금색 고리가 있는 통 + 앞발로 꼭 잡기
+function makeCannon3(ai){
+  const g=new THREE.Group(),A=ANIMALS[ai];
+  const b=mesh(geo.cyl,'#6b5b8a',.13,.74,.13,.37,0,0,g,null,.12);b.rotation.z=-Math.PI/2;
+  for(const x of[.24,.52]){const r=mesh(geo.cyl,'#ffc93d',.145,.05,.145,x,0,0,g);r.rotation.z=-Math.PI/2;}
+  const mz=mesh(geo.cyl,'#ffc93d',.18,.14,.18,.7,0,0,g,null,.12);mz.rotation.z=-Math.PI/2;
+  mesh(geo.sph,'#4a3b6a',.18,.18,.18,0,0,0,g,null,.1);
+  mesh(geo.sph,A.dark,.11,.1,.11,.6,-.05,.16,g,null,.12); // 앞발 (통을 꼭 잡아요)
+  g.userData.muzzle=mz;level.add(g);return g;
 }
 
-
-// 땅: 2D 땅 높이(ground)를 따라 윗면(풀)과 앞면(흙)을 만들어요. 땅이 파이면 다시 만들어요.
-let terrain3=null;
+// ---------- 땅: 풀 윗면 + 흙 층이 보이는 앞면 + 박힌 돌 + 풀숲 ----------
+let terrain3=null, rocks3=null, tufts3=null;
+function srand(i){return((Math.sin(i*12.9898+78.233)*43758.5453)%1+1)%1;}
 function build3DTerrain(){
-  if(terrain3){scene.remove(terrain3);terrain3.geometry.dispose();}
-  const step=4, xs=[-600];for(let x=0;x<W;x+=step)xs.push(x);xs.push(W-1,W+600);
+  for(const o of[terrain3,rocks3,tufts3])if(o){scene.remove(o);o.geometry.dispose();}
+  aimSun();
+  const step=4, xs=[-700];for(let x=0;x<W;x+=step)xs.push(x);xs.push(W-1,W+700);
   const gy=x=>-ground[clamp(Math.round(x),0,W-1)];
   const pos=[],col=[],idx=[];const C=c=>new THREE.Color(c);
-  const grass=C(theme.grass[0]),grassB=C(theme.grass[0]).lerp(C('#ffffff'),.15),grassD=C(theme.grass[0]).multiplyScalar(.82),soil=C(theme.soil[0]),soilD=C(theme.soil[2]).multiplyScalar(.8);
-  const rnd=(i)=>((Math.sin(i*12.9898)*43758.5453)%1+1)%1;
-  const add=(x,y,z,c,j)=>{pos.push(x,y,z);const v=.94+rnd(j)*.12;col.push(c.r*v,c.g*v,c.b*v);return pos.length/3-1;};
-  const bottom=-H-400;
-  // 윗면 (뒤 → 앞), 앞면 풀 테두리, 앞면 흙
+  const grass=C(theme.grass[0]),grassB=C(theme.grass[0]).lerp(C('#ffffff'),.12),grassD=C(theme.grass[0]).multiplyScalar(.8);
+  const soil=C(theme.soil[0]),soilL=C(theme.soil[1]),soilD=C(theme.soil[0]).multiplyScalar(.84),stone=C(theme.soil[2]).multiplyScalar(.86),stoneD=C(theme.soil[2]).multiplyScalar(.62);
+  const add=(x,y,z,c,j)=>{pos.push(x,y,z);const v=.95+srand(j)*.1;col.push(c.r*v,c.g*v,c.b*v);return pos.length/3-1;};
+  // 앞면 층 (위에서부터 깊이, 색): 경계는 살짝 물결쳐요
+  const bands=[[0,10,grass,grassD],[10,44,soilL,soil],[44,52,soilD,soilD],[52,120,soil,soilD],[120,128,stone,stone],[128,H+500,stone,stoneD]];
+  const wave=(x,k)=>k?Math.sin(x*.023+k*1.7)*5+Math.sin(x*.061+k)*2.5:0;
   const rows=[];
-  xs.forEach((x,i)=>{const y=gy(x);rows.push([add(x,y,ZB,grassB,i),add(x,y,ZF,grass,i+.3),add(x,y,ZF,grass,i+.5),add(x,y-9,ZF,grassD,i+.7),add(x,y-9,ZF,soil,i+.9),add(x,bottom,ZF,soilD,i+.1)]);});
+  xs.forEach((x,i)=>{
+    const y=gy(x),r=[add(x,y,ZB,grassB,i),add(x,y,ZF,grass,i+.3)];
+    bands.forEach(([d0,d1,c0,c1],k)=>{r.push(add(x,y-d0-wave(x,k),ZF,c0,i+k*.17),add(x,y-d1-wave(x,k+1),ZF,c1,i+k*.19));});
+    rows.push(r);
+  });
   for(let i=0;i<xs.length-1;i++){const a=rows[i],b=rows[i+1];
     const q=(p0,p1,p2,p3)=>idx.push(p0,p1,p2,p2,p1,p3);
-    q(a[0],a[1],b[0],b[1]);q(a[2],a[3],b[2],b[3]);q(a[4],a[5],b[4],b[5]);}
+    q(a[0],a[1],b[0],b[1]);for(let k=0;k<bands.length;k++)q(a[2+k*2],a[3+k*2],b[2+k*2],b[3+k*2]);}
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   g.setIndex(idx);g.computeVertexNormals();
-  terrain3=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true}));scene.add(terrain3);
+  terrain3=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true}));terrain3.receiveShadow=true;scene.add(terrain3);
+  // 박힌 돌 (땅이 파여 공중에 뜨는 돌은 빼요)
+  const rk=[];for(let x=-200;x<W+200;x+=26){const j=Math.round(x);if(srand(j)<.45)continue;const d=30+srand(j+1)*180,s=4+srand(j+2)*8;rk.push([x+srand(j+3)*20,gy(x)-d,s,srand(j+4)]);}
+  rocks3=new THREE.InstancedMesh(geo.ico,mat(C(theme.soil[2]).lerp(C('#9a94b8'),.35).getStyle()),rk.length);
+  const m4=new THREE.Matrix4(),q4=new THREE.Quaternion(),e4=new THREE.Euler();
+  rk.forEach(([x,y,s,r],i)=>{e4.set(r*6,r*9,r*3);q4.setFromEuler(e4);m4.compose(new THREE.Vector3(x,y,ZF+s*.35),q4,new THREE.Vector3(s*1.3,s,s*.6));rocks3.setMatrixAt(i,m4);});
+  scene.add(rocks3);
+  // 풀숲 (앞 가장자리 + 윗면 여기저기). 눈 나라는 눈 덩이처럼 하얘요
+  const tf=[];
+  for(let x=-150;x<W+150;x+=8){const j=Math.round(x)+7;tf.push([x+srand(j)*6,ZF-2-srand(j+1)*6,j]);if(srand(j+2)<.35)tf.push([x+srand(j+3)*8,ZB+10+srand(j+4)*(ZF-ZB-30),j+5]);}
+  tufts3=new THREE.InstancedMesh(geo.tuft,new THREE.MeshToonMaterial({gradientMap:toonGrad}),tf.length);
+  const flowers=theme.weather==='petal'||theme.id==='holland';
+  tf.forEach(([x,z,j],i)=>{const h=5+srand(j+6)*6,w=2.2+srand(j+7)*1.8,y=gy(x);
+    e4.set((srand(j+8)-.5)*.5,0,(srand(j+9)-.5)*.6);q4.setFromEuler(e4);m4.compose(new THREE.Vector3(x,y+h*.42,z),q4,new THREE.Vector3(w,h,w));tufts3.setMatrixAt(i,m4);
+    const c=flowers&&srand(j+10)<.12?C(['#ff8fb1','#ffd34d','#ffffff','#ff7a3d'][Math.floor(srand(j+11)*4)]):C(theme.grass[srand(j+12)<.5?0:1]).multiplyScalar(.85+srand(j+13)*.25);
+    tufts3.setColorAt(i,c);});
+  tufts3.castShadow=true;scene.add(tufts3);
 }
-// 캐릭터: 동그란 3D 동물 + 대포. 표정 대신 몸짓(통통·폴짝·축 처짐·기절)으로 기분을 보여요.
-function makeCannon3(){
-  const g=new THREE.Group();
-  const b=mesh(geo.cyl,'#6b5b8a',.13,.72,.13,.36,0,0,g);b.rotation.z=-Math.PI/2;
-  const r=mesh(geo.cyl,'#ffc93d',.17,.16,.17,.66,0,0,g);r.rotation.z=-Math.PI/2;
-  mesh(geo.sph,'#4a3b6a',.17,.17,.17,0,0,0,g);
-  level.add(g);return g;
-}
+
+// ---------- 캐릭터 맞추기 (2D 판정 자리 그대로) ----------
 function sync3D(p,mood,o){
   if(!p._m||p._m.animal!==p.animal){
-    if(p._m){level.remove(p._m.a.root);level.remove(p._m.a.shadow);level.remove(p._m.cannon);}
-    const a=makeAnimal(p.animal);level.add(a.root);p._m={a,animal:p.animal,cannon:makeCannon3()};
+    if(p._m){level.remove(p._m.a.root);level.remove(p._m.cannon);}
+    const a=makeAnimal3(p.animal);level.add(a.root);p._m={a,animal:p.animal,cannon:makeCannon3(p.animal)};
   }
   const {a,cannon}=p._m, t=game.tick+p.phase*40, S=R*2;
-  p._m.seen=game.tick;
   let bob=0,sq=1,tilt=Math.sin(t*.035)*.06,jx=0;
   if(mood==='excited'){bob=Math.abs(Math.sin(t*.13))*R*.18;tilt=Math.sin(t*.13)*.1;}
   else if(mood==='happy'){bob=Math.abs(Math.sin(t*.2))*R*.45;tilt=Math.sin(t*.2)*.16;}
   else if(mood==='sad'){sq=.88;tilt=Math.sin(t*.02)*.03;}
   else if(mood==='surprised'){sq=1.1;bob=R*.12;tilt=0;}
   else if(mood==='focus'){jx=(Math.random()-.5)*(o.power||0)/100*R*.14;sq=.95+.03*Math.sin(t*.5);tilt=0;}
-  else if(mood==='faint'){tilt=-p.dir*1.2;sq=.9;}
+  else if(mood==='faint'){tilt=-p.dir*1.25;sq=.9;}
   if(p.hurt){const k=p.hurt/24;sq*=1-Math.sin(p.hurt*.9)*.1*k;jx+=Math.sin(p.hurt*1.7)*R*.12*k;}
   const lean=p.tilt||0;
-  a.root.position.set(p.x+jx,-p.y+bob,0);
-  a.root.rotation.set(0,p.dir>0?.65:-.65,0);
-  a.root.rotation.z=0;
-  a.body.rotation.set(0,0,tilt*(p.dir>0?-1:1)-lean);
-  a.body.scale.set(1/Math.sqrt(sq),sq,1/Math.sqrt(sq));
-  a.root.scale.setScalar(S);
-  a.shadow.position.set(p.x,-p.y+.5,0);a.shadow.rotation.x=-Math.PI/2;a.shadow.scale.setScalar(R*1.05*Math.max(.4,1-bob/(R*1.2)));
-  a.root.visible=a.shadow.visible=true;
-  // 대포: 2D와 같은 자리·각도 (몸 앞쪽)
+  a.root.visible=true;
+  a.root.position.set(p.x+jx,-p.y+bob,0);a.root.rotation.set(0,p.dir>0?.32:-.32,0);a.root.scale.setScalar(S);
+  a.body.rotation.set(0,0,tilt*(p.dir>0?-1:1)-lean);a.body.scale.set(1/Math.sqrt(sq),sq,1/Math.sqrt(sq));
+  // 표정 (바뀔 때만 다시 그려요)
+  const ph=p.phase, blink=(mood==='idle'||mood==='excited')&&(Math.floor((game.tick+ph*50)/6)%45===0);
+  const key=mood+'|'+blink+'|'+p.dir+'|'+(mood==='sad'||mood==='focus'||mood==='idle'?Math.floor(game.tick/3):0);
+  if(a.face.key!==key){a.face.key=key;drawFace3(a.face,p.animal,p.dir,mood,game.tick,ph);}
+  a.stars.visible=mood==='faint';
+  if(a.stars.visible)a.stars.children.forEach((s,k)=>{const ang=game.tick*.08+k*Math.PI*2/3;s.position.set(Math.cos(ang)*.38,Math.sin(ang*2)*.03,Math.sin(ang)*.38);s.rotation.y=game.tick*.1;});
+  a.hands.forEach(h=>{h.position.y=.42;});
+  // 대포: 2D와 같은 자리·각도. 2D처럼 몸 뒤에서 옆으로 삐져나와요 (앞에 두면 얼굴을 가려요)
   const show=o.angle!=null&&mood!=='faint';
   cannon.visible=show;
-  if(show){cannon.position.set(p.x+jx+Math.sin(lean)*R,-p.y+bob+R*.9,R*1.15);cannon.rotation.set(0,0,o.angle);cannon.scale.setScalar(R*2);
-    cannon.children[1].material=mat(o.glow&&Math.sin(game.tick*.25)>0?'#ff9f2e':'#ffc93d');}
-  a.hands.forEach(h=>{h.position.y=.42;});
+  if(show){cannon.position.set(p.x+jx+Math.sin(lean)*R,-p.y+bob+R*.9,-R*.05);cannon.rotation.set(0,0,o.angle);cannon.scale.setScalar(S);
+    cannon.userData.muzzle.material=mat(o.glow&&Math.sin(game.tick*.25)>0?'#ff9f2e':'#ffc93d');}
+}
+
+// ---------- 3D 포탄 (동물마다 다른 모양) ----------
+function makeShell3(s){
+  const A=ANIMALS[s.owner.animal],g=new THREE.Group();
+  switch(A.id){
+    case 'rabbit':{const c=mesh(geo.cone,'#ff8a1f',.75,2.6,.75,0,0,0,g,null,.1);c.rotation.z=-Math.PI/2;
+      for(const k of[-.45,0,.45]){const l=mesh(geo.sph,'#5fcf4a',.55,.2,.2,-1.75,k*.55,0,g,null,.12);l.rotation.z=k;}break;}
+    case 'bear':mesh(geo.sph,'#e3a35a',1,.92,1,0,0,0,g,null,.08);mesh(geo.cyl,'#b8742f',.66,.22,.66,0,.82,0,g,null,.1);mesh(geo.sph,'#ffcf3d',.5,.16,.5,0,.95,0,g);mesh(geo.sph,'#ffcf3d',.16,.34,.16,.3,.55,.5,g);mesh(geo.cyl,'#fff3c4',1.01,.32,1.01,0,.05,0,g);break;
+    case 'chick':mesh(geo.sph,'#fff3d6',.82,1.05,.82,0,0,0,g,null,.08);for(const [x,y,z] of [[-.3,.2,.7],[.25,-.3,.72],[.15,.45,.62]])mesh(geo.sphLo,'#e8c48a',.12,.1,.05,x,y,z,g);break;
+    case 'cat':mesh(geo.sph,'#ff9ec4',1,1,1,0,0,0,g,null,.08);for(const r of[0,1.05,2.1]){const t=mesh(geo.ring,'#fff0f6',1.01,1.01,1.01,0,0,0,g);t.rotation.set(r,r*.7,0);}break;
+    case 'frog':mesh(geo.sph,'#7fd6ff',.98,.98,.98,0,0,0,g,{transparent:true,opacity:.88},.08);{const c=mesh(geo.cone,'#7fd6ff',.62,1.5,.62,-1.05,0,0,g,{transparent:true,opacity:.88});c.rotation.z=Math.PI/2;}mesh(geo.sph,'#ffffff',.25,.13,.1,.2,.4,.85,g);break;
+    default:mesh(geo.sph,'#ffffff',1,1,1,0,0,0,g,null,.08);for(const [x,y,z] of [[-.5,.4,.6],[.45,-.3,.65],[.1,.6,-.7]])mesh(geo.sphLo,'#e3f3ff',.28,.24,.24,x,y,z,g);
+  }
+  if(s.power||s.w.id==='fire')mesh(geo.sphLo,s.w.id==='fire'?'#ff5a3d':'#ff9f2e',1.9,1.9,1.9,0,0,0,g,{transparent:true,opacity:.35,emissive:s.w.id==='fire'?'#7a1a00':'#7a4a00',depthWrite:false});
+  const k=s.w.id==='big'?1.45:s.w.id==='triple'?.8:1;g.scale.setScalar(11*k);g.userData.dir=A.id==='rabbit'||A.id==='frog';
+  g.traverse(o=>{if(o.isMesh&&o.material!==lineMat)o.castShadow=true;});
+  level.add(g);return g;
+}
+let shells3=[];
+function syncShells3(){
+  const live=game?game.shells:[];
+  for(const s of live){if(!s._m){s._m=makeShell3(s);shells3.push(s);}
+    const m=s._m;m.position.set(s.x,-s.y,0);
+    if(m.userData.dir)m.rotation.set(0,0,Math.atan2(-s.vy,s.vx));else m.rotation.set(s.spin*.6,s.spin*.3,-s.spin);}
+  shells3=shells3.filter(s=>{if(live.includes(s))return true;level.remove(s._m);s._m=null;return false;});
+}
+
+// ---------- 3D 폭발: 흙덩이·충격파 고리·번쩍 ----------
+let fx3=[], lastBoom=null;
+function boom3D(x,y,s){
+  const r=(s&&s.w?s.w.r:34)*(s&&s.power?1.3:1);
+  lastBoom={x,y,t:game.tick};
+  const cols=[theme.soil[0],theme.soil[1],theme.grass[0],theme.soil[2]];
+  for(let i=0;i<16;i++){const sz=3+Math.random()*6,m=mesh(geo.ico,cols[i%4],sz,sz,sz,x,-y,rand(-10,30));
+    fx3.push({m,vx:rand(-4.5,4.5),vy:rand(3,9),vz:rand(-2,4),rx:rand(-.3,.3),ry:rand(-.3,.3),life:0,max:rand(40,70),k:'chip'});}
+  const ring=mesh(geo.ring,'#ffffff',1,1,1,x,-y+4,0,null,{transparent:true,opacity:.8,depthWrite:false});ring.rotation.x=Math.PI/2;ring.castShadow=false;
+  fx3.push({m:ring,life:0,max:26,k:'ring',r});
+  const fl=mesh(geo.sphLo,'#fff6c4',1,1,1,x,-y,0,null,{transparent:true,opacity:.9,emissive:'#ffcf3d',depthWrite:false});fl.castShadow=false;
+  fx3.push({m:fl,life:0,max:12,k:'flash',r});
+}
+function stepFx3(){
+  fx3=fx3.filter(f=>{
+    f.life++;const k=f.life/f.max;
+    if(f.k==='chip'){f.vy-=.32;f.m.position.x+=f.vx;f.m.position.y+=f.vy;f.m.position.z+=f.vz;f.m.rotation.x+=f.rx;f.m.rotation.y+=f.ry;
+      const gyy=-ground[clamp(Math.round(f.m.position.x),0,W-1)];if(f.m.position.y<gyy){f.m.position.y=gyy;f.vy*=-.3;f.vx*=.6;f.vz*=.6;}
+      if(k>.75)f.m.scale.multiplyScalar(.9);}
+    else if(f.k==='ring'){const s=f.r*(.3+k*1.4);f.m.scale.set(s,s,s);f.m.material.opacity=.8*(1-k);}
+    else{const s=f.r*(.5+k*.6);f.m.scale.set(s,s,s);f.m.material.opacity=.9*(1-k);}
+    if(f.life>=f.max){level.remove(f.m);if(f.k!=='chip')f.m.material.dispose();return false;}
+    return true;
+  });
+}
+
+// ---------- 카메라 연출: 날아가는 포탄을 따라가며 살짝 확대, 맞은 곳을 보여 준 뒤 돌아와요 ----------
+const camZ={z:1,fx:0,fy:0};
+function applyCam(){
+  if(!view.bs)return;
+  let tz=1,fx=W/2,fy=H/2;
+  if(game&&game.state==='flying'&&game.shells.length){const s=game.shells[0];tz=1.3;fx=s.x;fy=Math.max(s.y,H*.18);}
+  else if(game&&game.state==='settle'&&lastBoom&&game.tick-lastBoom.t<70){tz=1.22;fx=lastBoom.x;fy=lastBoom.y;}
+  if(!camZ.fx){camZ.fx=fx;camZ.fy=fy;}
+  camZ.z+=(tz-camZ.z)*.06;camZ.fx+=(fx-camZ.fx)*.14;camZ.fy+=(fy-camZ.fy)*.14;
+  const k=clamp((camZ.z-1)/.3,0,1), s=view.bs*camZ.z;
+  const bx=view.box+camZ.fx*view.bs, by=view.boy+camZ.fy*view.bs;           // 기본 화면에서 초점 자리
+  const tx=bx+(view.cw/2-bx)*k, ty=by+(view.ch*.52-by)*k;                    // 확대할수록 화면 가운데로
+  view.s=s;view.ox=tx-camZ.fx*s;view.oy=ty-camZ.fy*s;
 }
 function render3D(sx,sy){
   if(!r3)return;
-  // 지난 판의 캐릭터는 숨기기
-  for(const ch of level.children)if(ch.userData.player&&ch.userData.player._m&&ch.userData.player._m.seen!==game.tick)ch.visible=false;
+  syncShells3();stepFx3();
   const {s,ox,oy,cw,ch}=view, c=Math.cos(PITCH);
   const L=(-ox)/s-sx, Rr=(cw-ox)/s-sx, T=(oy)/s+sy, B=-(ch-oy)/s+sy;
   cam3.left=L;cam3.right=Rr;cam3.top=T*c;cam3.bottom=B*c;cam3.updateProjectionMatrix();
   cam3.position.set(0,Math.sin(PITCH)*3000,Math.cos(PITCH)*3000);cam3.lookAt(0,0,0);
   r3.render(scene,cam3);
+}
+// 2D 포탄 대신 3D로 그릴 때, 화면 위로 나간 포탄 위치 화살표만 2D로
+function shellArrow(c,s){
+  const A=ANIMALS[s.owner.animal],topW=Math.max(0,-view.oy/view.s);
+  if(s.y<topW-10){c.beginPath();c.moveTo(s.x,topW+6);c.lineTo(s.x-9,topW+22);c.lineTo(s.x+9,topW+22);c.closePath();c.fillStyle=A.dark;c.fill();}
 }
 
 // ---------- 화면 위 글자·버튼 ----------
@@ -2194,7 +2300,7 @@ function frame(now){
   render();requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__mg={update,render,get game(){return game;},get players(){return players;},fire,startPlay,spawnBird,useItem,giveItem,drawChar,drawShell,net,setMode,joinRoom,SONGS,parseMel,get theme(){return theme;},music,setupOpt,renderSlots};
+window.__mg={update,render,camZ,get game(){return game;},get players(){return players;},fire,startPlay,spawnBird,useItem,giveItem,drawChar,drawShell,net,setMode,joinRoom,SONGS,parseMel,get theme(){return theme;},music,setupOpt,renderSlots};
 })();
 </script>
 
