@@ -553,7 +553,8 @@ function drawItemIcon(c,x,y,s,k){
 }
 
 // ---------- 시작 화면 (참가자 고르기) ----------
-const TYPES=[{id:'easy',label:'컴퓨터 (쉬움)'},{id:'normal',label:'컴퓨터 (보통)'},{id:'none',label:'안 함'}];
+const TYPES=[{id:'friend',label:'친구 폰 자리'},{id:'easy',label:'컴퓨터 (쉬움)'},{id:'normal',label:'컴퓨터 (보통)'},{id:'none',label:'안 함'}];
+const typesNow=()=>net.mode==='host'?TYPES:TYPES.filter(t=>t.id!=='friend'); // '친구 폰 자리'는 방을 만들었을 때만
 const defaultSlots=[
   {type:'human', animal:0,name:'토끼',team:0},
   {type:'normal',animal:5,name:'펭귄',team:1},
@@ -564,7 +565,7 @@ const defaultSlots=[
 let slots=store.get('mp_slots',null);
 if(!Array.isArray(slots)||slots.length!==5)slots=defaultSlots.map(s=>({...s}));
 slots[0].type='human';
-slots.forEach((s,i)=>{if(s.team!==0&&s.team!==1)s.team=i%2;if(i>0&&!TYPES.some(t=>t.id===s.type))s.type='none';});
+slots.forEach((s,i)=>{if(s.team!==0&&s.team!==1)s.team=i%2;if(i>0&&s.type==='friend')s.type=s.prev||'easy';if(i>0&&!TYPES.some(t=>t.id===s.type))s.type='none';});
 const setupOpt={map:store.get('mp_map','random'),team:store.get('mp_team',false)};
 function saveSlots(){store.set('mp_slots',slots.map(s=>s.type==='remote'?{type:'none',animal:s.animal,name:s.name,team:s.team}:s));}
 function renderSlots(){
@@ -590,9 +591,9 @@ function renderSlots(){
     if(remote){tb.className='type remote';tb.textContent='친구 폰';tb.disabled=true;}
     else if(i===0){tb.className='type';tb.textContent=guest?'내 캐릭터':'나 (이 폰)';tb.disabled=true;}
     else{
-      const T=TYPES.find(t=>t.id===s.type)||TYPES[0];
-      tb.className='type'+(s.type==='none'?' none':' cpu'); tb.textContent=T.label;
-      tb.onclick=()=>{const k=TYPES.findIndex(t=>t.id===s.type); s.type=TYPES[(k+1)%TYPES.length].id; sfx.click(); saveSlots(); renderSlots(); if(net.mode==='host')sendLobby();};
+      const T=TYPES.find(t=>t.id===s.type)||TYPES[1];
+      tb.className='type'+(s.type==='none'?' none':s.type==='friend'?' remote':' cpu'); tb.textContent=T.label;
+      tb.onclick=()=>{const L=typesNow(),k=L.findIndex(t=>t.id===s.type); s.type=L[(k+1)%L.length].id; sfx.click(); saveSlots(); renderSlots(); if(net.mode==='host')sendLobby();};
     }
     card.append(ava,inp,tb);
     if(!guest&&s.type!=='none'){
@@ -1033,7 +1034,7 @@ function syncHud(){
 // ---------- 화면 바꾸기 ----------
 function show(id,on){$(id).hidden=!on;}
 function startPlay(){
-  const list=slots.filter(s=>s.type!=='none');
+  const list=slots.filter(s=>s.type!=='none'&&s.type!=='friend'); // 아무도 안 들어온 친구 자리는 빼요
   if(list.length<2){$('#setupMsg').textContent='두 명 이상 있어야 놀 수 있어요. 컴퓨터 친구를 넣어 주세요.';return;}
   if(setupOpt.team&&new Set(list.map(s=>s.team)).size<2){$('#setupMsg').textContent='팀전은 두 팀 모두 한 명 이상 있어야 해요. 팀 버튼을 눌러 나눠 주세요.';return;}
   $('#setupMsg').textContent='';
@@ -1172,6 +1173,7 @@ function leaveRoom(){
 function setMode(m){
   leaveRoom();
   net.mode=m==='join'?'guest':m;
+  slots.forEach((s,i)=>{if(i===0)return;if(net.mode==='host'&&i<=3&&s.type!=='remote'&&s.type!=='friend'){s.prev=s.type;s.type='friend';}else if(net.mode!=='host'&&s.type==='friend')s.type=s.prev||'easy';}); // 방을 나오면 원래 고른 것으로
   document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
   $('#slots').classList.toggle('single',net.mode==='guest');
   $('#setupMsg').textContent='';
@@ -1190,7 +1192,7 @@ function openRoom(){
   peer.on('open',()=>{
     if(net.peer!==peer)return;
     net.code=code;
-    roomMsg('<p>방 번호</p><div class="code">'+code+'</div><p>다른 폰에서 이 게임을 열고 <b>방 들어가기</b>에 이 번호를 넣어요</p><p id="hostStatus">친구를 기다리는 중…</p>');
+    roomMsg('<p>방 번호</p><div class="code">'+code+'</div><p>다른 폰에서 이 게임을 열고 <b>방 들어가기</b>에 이 번호를 넣어요<br>들어온 친구는 파란 <b>친구 폰 자리</b>에 앉아요</p><p id="hostStatus">친구를 기다리는 중…</p>');
     updateStartBtn();
   });
   peer.on('connection',conn=>{
@@ -1209,7 +1211,8 @@ function openRoom(){
 function hostHello(m,conn){
   if($('#setup').hidden){conn.send({t:'busy'});setTimeout(()=>conn.close(),500);return;}
   if(slots.some(s=>s.type==='remote'&&s.owner===conn.peer))return;
-  let i=slots.findIndex((s,k)=>k>0&&s.type==='none');
+  let i=slots.findIndex((s,k)=>k>0&&s.type==='friend');                      // '친구 폰 자리' 먼저
+  if(i<0)i=slots.findIndex((s,k)=>k>0&&s.type==='none');
   if(i<0)i=slots.findIndex((s,k)=>k>0&&(s.type==='easy'||s.type==='normal'));
   if(i<0){conn.send({t:'full'});setTimeout(()=>conn.close(),500);return;}
   const animal=clamp(m.animal|0,0,ANIMALS.length-1), name=String(m.name||ANIMALS[animal].name).slice(0,6);
@@ -1219,13 +1222,13 @@ function hostHello(m,conn){
 function sendLobby(){
   const n=slots.filter(s=>s.type==='remote').length, st=$('#hostStatus');
   if(st)st.textContent=n?'친구 폰 '+n+'대가 들어왔어요':'친구를 기다리는 중…';
-  send({t:'lobby',list:slots.filter(s=>s.type!=='none').map(s=>({name:s.name,animal:s.animal,type:s.type}))});
+  send({t:'lobby',list:slots.filter(s=>s.type!=='none'&&s.type!=='friend').map(s=>({name:s.name,animal:s.animal,type:s.type}))});
 }
 function hostLost(conn){
   if(!net.conns.includes(conn))return;
   net.conns=net.conns.filter(c=>c!==conn);
   const id=conn.peer;
-  slots.forEach((s,i)=>{if(s.type==='remote'&&s.owner===id)slots[i]={type:'none',animal:s.animal,name:s.name,team:s.team};});
+  slots.forEach((s,i)=>{if(s.type==='remote'&&s.owner===id)slots[i]={type:'friend',animal:s.animal,name:s.name,team:s.team};});
   if(game&&!game.demo&&$('#setup').hidden){
     players.forEach(p=>{if(p.owner!==id)return;p.owner='host';p.ai='easy';p.tx=null;addText(p.name+' 폰이 나갔어요 · 컴퓨터가 대신해요',GW/2,GH/2,'#9b8cff');});
   }else{renderSlots();sendLobby();}
