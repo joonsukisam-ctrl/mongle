@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>바로 코치 시험판</title>
+<title>바로 코치</title>
 <style>
   :root {
     --bg: #f6f7fb; --card: #ffffff; --ink: #1d2433; --muted: #6b7385;
@@ -46,20 +46,87 @@
   .log { font-size: 14px; color: var(--muted); max-height: 160px; overflow: auto; margin: 0; padding-left: 18px; }
   .note { font-size: 13px; color: var(--muted); line-height: 1.5; }
   @media (max-width: 520px) { .stats b { font-size: 18px; } .big { font-size: 18px; } }
+  .prog { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+  .prog li { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
+             background: var(--bg); border-radius: 10px; padding: 6px 10px; }
+  .prog li.now { outline: 2px solid var(--accent); }
+  .prog li.done { opacity: .6; }
+  .prog button { padding: 6px 10px; font-size: 14px; }
+  .small { font-size: 13px; color: var(--muted); }
+  .brief { align-items: flex-start; }
+  @media (max-width: 520px) { .brief > .face:last-child { display: none; } .brief > .face { width: 48px; height: 48px; font-size: 26px; } }
+  /* 바른 자세 배우기 */
+  .tut-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tut-head b { font-size: 17px; }
+  #tutBody[hidden], #tutCtl[hidden], #profBody[hidden] { display: none; }
+  .prof-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  .prof-grid label { color: var(--ink); }
+  .prof-grid input, .prof-grid select { width: 72px; font: inherit; padding: 4px 6px; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--card); color: var(--ink); }
+  #tutCanvas { width: 100%; aspect-ratio: 2 / 1; display: block; background: var(--bg); border-radius: 12px; margin-top: 10px; }
+  .tut-title { font-weight: bold; font-size: 18px; margin: 10px 0 4px; color: var(--accent); }
+  .tut-text { line-height: 1.6; min-height: 3.2em; }
+  .tut-dots { display: flex; gap: 6px; margin: 8px 0; }
+  .tut-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); display: block; }
+  .tut-dots i.on { background: var(--accent); }
 </style>
 </head>
 <body>
 <main>
-  <h1>🏋️ 바로 코치 · 스쿼트 시험판</h1>
+  <h1>🏋️ 바로 코치 · 오늘의 운동 <span class="small">(시험판)</span></h1>
 
   <section class="card brief">
     <div class="face" id="myFace" title="눌러서 내 캐리커처 그림 넣기">🙂</div>
     <div class="bubble" id="briefing">
-      <b>바로 코치:</b> 오늘은 <b>하체 날</b>이에요! 스쿼트 <b>3세트 × 10개</b>, 세트 사이 30초 쉬어요.<br>
-      휴대폰(카메라)을 <b>허리 높이</b>에 두고, <b>2~3m 뒤</b>로 가서 <b>머리부터 발끝까지</b> 다 나오게 서 주세요.
-      앞에서 찍으면 무릎 모임을, 옆에서 찍으면 깊이와 고개를 더 잘 봐요.
+      <b>바로 코치:</b> <span id="dayLabel"></span> 오늘은 <b>하체 날</b>이에요! 순서대로 같이 해요.
+      <ol class="prog" id="progList"></ol>
+      <span class="small">휴대폰을 <b>허리 높이</b>에 두고 <b>2~3m 뒤</b>에서 <b>머리부터 발끝까지</b> 나오게 서요.
+      앞에서 찍으면 무릎을, 옆에서 찍으면 깊이와 고개를 더 잘 봐요.</span>
     </div>
     <div class="face" style="background:#fff3e0;border-color:var(--warn)">🧑‍🏫</div>
+  </section>
+  <section class="card" id="profCard">
+    <div class="tut-head">
+      <b>👤 내 프로필 <span class="small">(이 휴대폰에만 저장돼요)</span></b>
+      <button id="profToggle" class="sub">펼치기</button>
+    </div>
+    <div id="profBody" hidden>
+      <div class="prof-grid">
+        <label>성별 <select id="pfSex"><option value="m">남성</option><option value="f">여성</option></select></label>
+        <label>나이 <input id="pfAge" type="number" min="10" max="100" value="40" inputmode="numeric"> 세</label>
+        <label>키 <input id="pfH" type="number" min="120" max="210" value="170" inputmode="numeric"> cm</label>
+        <label>몸무게 <input id="pfW" type="number" min="30" max="200" value="68" inputmode="numeric"> kg</label>
+      </div>
+      <label style="margin-top:8px">체형 반영 <input id="pfK" type="range" min="0" max="100" value="100" style="width:140px"> <span id="pfKv">100%</span></label>
+      <div class="row" style="margin-top:8px">
+        <div class="face" id="pfFace" title="눌러서 얼굴 사진 넣기">🙂</div>
+        <div>
+          <button id="pfFaceBtn" class="sub">📷 얼굴 사진 넣기</button>
+          <div class="small" style="margin-top:4px">캐리커처 그림을 넣으면 더 귀여워요. 사진은 이 휴대폰 밖으로 나가지 않아요.</div>
+        </div>
+      </div>
+      <div class="small" id="pfInfo" style="margin-top:8px"></div>
+      <div class="small" style="margin-top:4px">👉 아래 <b>바른 자세 배우기</b>에서 내 체형과 얼굴로 시범을 보여 줘요.</div>
+    </div>
+  </section>
+
+  <section class="card" id="tutCard">
+    <div class="tut-head">
+      <b>📘 바른 자세 배우기 · <span id="tutName">스쿼트</span> <span style="font-weight:normal;color:var(--muted);font-size:14px">(움직이는 시범 + 설명)</span></b>
+      <button id="tutOpen">▶ 시작</button>
+    </div>
+    <div id="tutBody" hidden>
+      <canvas id="tutCanvas" width="800" height="400"></canvas>
+      <div class="tut-dots" id="tutDots"></div>
+      <div class="tut-title" id="tutTitle"></div>
+      <div class="tut-text" id="tutText"></div>
+      <div class="row" style="margin-top:8px" id="tutCtl" hidden>
+        <button id="tutPrev" class="sub">◀ 이전</button>
+        <button id="tutPause" class="sub">⏸ 잠깐</button>
+        <button id="tutNext">다음 ▶</button>
+        <button id="tutClose" class="sub">닫기</button>
+      </div>
+    </div>
   </section>
   <input type="file" id="faceFile" accept="image/*" hidden>
   <input type="file" id="videoFile" accept="video/*" hidden>
@@ -76,6 +143,7 @@
       <label><input type="checkbox" id="optVoice" checked> 음성</label>
       <label><input type="checkbox" id="optTempo"> 구령 모드 (내려가요·둘·셋·올라와)</label>
       <label><input type="checkbox" id="optBack"> 뒤 카메라</label>
+      <label><input type="checkbox" id="optForm" checked> 자세 알려주기 (무릎·상체·고개)</label>
     </div>
   </section>
 
@@ -116,7 +184,38 @@
 
 <script type="module">
 // ===== 설정 (시험판 기준값 — 검증 전) =====
-const TARGET_REPS = 10, TARGET_SETS = 3, REST_SEC = 30;
+const REST_SEC = 30;        // 세트 사이 쉬는 시간
+const NEXT_REST_SEC = 40;   // 다음 운동으로 넘어갈 때 쉬는 시간
+// ===== 오늘의 운동 프로그램 =====
+const START_DATE = "2026-11-12";   // 운동 시작한 날 = 1일차
+const EXERCISES = {
+  squat: { name: "스쿼트", counter: "avg", knee: true,
+           intro: "발은 어깨너비, 엉덩이를 뒤로 빼면서 앉아요. 뒤꿈치는 바닥에 붙여요." },
+  lunge: { name: "런지", counter: "min", knee: false,
+           intro: "한 발을 크게 앞으로 내딛고, 양 무릎을 직각으로 굽혀요. 상체는 꼿꼿하게, 좌우 번갈아 해요. 앞에서 찍는 게 좋아요." },
+  wide:  { name: "와이드 스쿼트", counter: "avg", knee: true,
+           intro: "발을 어깨보다 넓게, 발끝은 바깥으로. 무릎이 발끝 방향으로 벌어지게 앉아요." },
+};
+const STRETCH = [
+  { name: "허벅지 앞 (오른쪽)", sec: 20, how: "벽이나 의자를 잡고, 오른발 발등을 잡아 엉덩이 쪽으로 당겨요. 무릎은 바닥을 향하게." },
+  { name: "허벅지 앞 (왼쪽)", sec: 20, how: "이번엔 왼발 발등을 잡아 엉덩이 쪽으로 당겨요." },
+  { name: "허벅지 뒤 (오른쪽)", sec: 20, how: "오른발을 앞으로 뻗어 뒤꿈치만 대고, 허리를 편 채 엉덩이를 뒤로 빼며 상체를 숙여요." },
+  { name: "허벅지 뒤 (왼쪽)", sec: 20, how: "이번엔 왼발을 앞으로 뻗고, 똑같이 해요." },
+];
+const PROGRAM = [   // 하체 날
+  { ex: "squat", sets: 3, reps: 10 },
+  { ex: "lunge", sets: 2, reps: 10 },
+  { ex: "wide",  sets: 2, reps: 12 },
+  { stretch: true },
+];
+const dayNo = (() => {
+  const s = new Date(START_DATE + "T00:00:00"), t = new Date(); t.setHours(0, 0, 0, 0);
+  return Math.max(1, Math.floor((t - s) / 86400000) + 1);
+})();
+// '스쿼트예요' / '스트레칭이에요' (받침 있으면 '이에요')
+const yeyo = w => { const c = w.charCodeAt(w.length - 1); return (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28) ? w + "이에요" : w + "예요"; };
+const cur = () => PROGRAM[st.exIdx] || {};
+const exInfo = () => EXERCISES[cur().ex] || EXERCISES.squat;
 const DOWN_START = 0.75;   // 허벅지 높이 비율이 이 아래로 가면 '내려가는 중'
 const UP_DONE    = 0.85;   // 다시 이 위로 오면 1개 완료 (2장면 연속)
 const DEEP_OK    = 0.40;   // 가장 낮을 때 비율이 이 이하 → 깊이 OK (허벅지가 거의 수평)
@@ -147,7 +246,12 @@ const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
 
 // ===== 내 캐리커처 넣기 (이 기기에만 저장) =====
 const face = $("myFace");
-function showFace(url) { face.innerHTML = ""; const img = new Image(); img.src = url; img.alt = "내 캐릭터"; face.appendChild(img); }
+let faceImg = null;   // 자세 배우기 시범의 얼굴로도 씀
+function showFace(url) {
+  for (const el of [face, $("pfFace")]) { el.innerHTML = ""; const im = new Image(); im.src = url; im.alt = "내 얼굴"; el.appendChild(im); }
+  const img = new Image(); img.onload = () => { faceImg = img; if (window.baroRedrawIdle) window.baroRedrawIdle(); }; img.src = url;
+}
+$("pfFace").onclick = $("pfFaceBtn").onclick = () => $("faceFile").click();
 try { const saved = localStorage.getItem("baro_face"); if (saved) showFace(saved); } catch (e) {}
 face.onclick = () => $("faceFile").click();
 $("faceFile").onchange = e => {
@@ -183,11 +287,28 @@ function resetState() {
          mode: "idle", modeSince: 0, lastHintAt: 0, okSince: 0, lostSince: 0, cdStep: -1,
          // 자세·힘듦
          form: 0, goodStreak: 0, setReps: [], tiredSaid: false, base: {}, kneeHist: { L: [], R: [] } };
-  $("log").innerHTML = ""; updateStats(); $("hudSet").textContent = `세트 1/${TARGET_SETS}`;
+  st.exIdx = 0; st.stIdx = 0;
+  $("log").innerHTML = ""; updateStats(); updateHud(); renderProgram();
 }
 function updateStats() {
-  $("stReps").textContent = `${st.reps}/${TARGET_REPS}`; $("stTotal").textContent = st.total;
+  $("stReps").textContent = cur().reps ? `${st.reps}/${cur().reps}` : "-"; $("stTotal").textContent = st.total;
   $("stDeep").textContent = st.deep; $("stKnee").textContent = st.knee; $("stForm").textContent = st.form;
+}
+function updateHud() {
+  const c = cur();
+  $("hudSet").textContent = c.stretch ? "스트레칭" : `${exInfo().name} ${st.set}/${c.sets}`;
+  renderProgram();
+}
+// 오늘의 프로그램 목록 (지금 하는 운동 표시 + 자세 배우기 버튼)
+function renderProgram() {
+  const box = $("progList"); if (!box) return;
+  box.innerHTML = PROGRAM.map((p, i) => {
+    const now = st && st.running && st.exIdx === i, done = st && st.exIdx > i && st.total > 0;
+    const label = p.stretch ? `마무리 스트레칭 (${STRETCH.length}가지 × 20초)` : `${EXERCISES[p.ex].name} ${p.sets}세트 × ${p.reps}개`;
+    const btn = p.stretch ? "" : `<button class="sub tutBtn" data-ex="${p.ex}">📘 자세 배우기</button>`;
+    return `<li class="${now ? "now" : done ? "done" : ""}"><span>${done ? "✅" : now ? "👉" : "①②③④⑤⑥"[i]} ${label}</span>${btn}</li>`;
+  }).join("");
+  box.querySelectorAll(".tutBtn").forEach(b => b.onclick = () => tutOpen(b.dataset.ex));
 }
 function big(t) { $("bigMsg").textContent = t; }
 function log(t) { const li = document.createElement("li"); li.textContent = t; $("log").prepend(li); }
@@ -225,13 +346,15 @@ function analyze(lm, w, h) {
   $("hudView").textContent = "방향: " + ({ front: "앞", side: "옆", diag: "비스듬" })[view];
 
   // 허벅지 세로 길이 ÷ 정강이 길이 → 카메라와의 거리가 바뀌어도 같은 값
-  let sumR = 0, kneeAng = 180;
+  let sumR = 0, minLeg = 9, kneeAng = 180;
   for (const [hp, kn, an] of legs) {
     const shin = Math.hypot(kn.x - an.x, kn.y - an.y) || 1;
-    sumR += (kn.y - hp.y) / shin;
+    const v = (kn.y - hp.y) / shin;
+    sumR += v; minLeg = Math.min(minLeg, v);
     kneeAng = Math.min(kneeAng, angle(hp, kn, an));
   }
-  const raw = sumR / legs.length;
+  // 런지는 앞다리만 크게 굽혀서, 두 다리 평균 대신 더 굽힌 다리로 봄
+  const raw = exInfo().counter === "min" ? minLeg : sumR / legs.length;
 
   // '서 있을 때 값' = 무릎이 펴졌던 최근 장면들의 위쪽 값 (한 번에 고정하지 않고 계속 갱신)
   // 앞/옆/비스듬마다 따로 잼 (10-12 영상: 앞에서 잰 기준을 옆에 쓰니 다 일어서도 인정이 안 됨)
@@ -251,7 +374,8 @@ function analyze(lm, w, h) {
 
   if (window.baroDebug) window.baroDebug.push({ t: performance.now(), R, view, n: legs.length,
     kr: Math.abs(lk.x - rk.x) / (Math.abs(la.x - ra.x) || 1), hw: Math.abs(lh.x - rh.x) / (Math.abs(la.x - ra.x) || 1),
-    lk: [lk.x, lk.y], rk: [rk.x, rk.y], la: [la.x, la.y], ra: [ra.x, ra.y], lh: [lh.x, lh.y], rh: [rh.x, rh.y] });   // 시험용 기록
+    lk: [lk.x, lk.y], rk: [rk.x, rk.y], la: [la.x, la.y], ra: [ra.x, ra.y], lh: [lh.x, lh.y], rh: [rh.x, rh.y],
+    feet: [29, 30, 31, 32].map(i => [lm[i].x * w, lm[i].y * h, lm[i].visibility ?? 1]) });   // 시험용 기록
   // ----- 자세: 상체 숙임, 고개 숙임 -----
   const posture = measurePosture(lm, w, h, view, R, vis);
 
@@ -328,7 +452,7 @@ function finishRep(view) {
     return a.length >= 3 ? a[Math.floor(a.length / 2)] : KNEE_BASE0;
   };
   const kneeBad = (v, side) => v > KNEE_ABS || v > kneeBase(side) + KNEE_SHIFT;
-  const judged = view === "front" && st.inL > -9;
+  const judged = view === "front" && st.inL > -9 && exInfo().knee;
   const inL = judged && kneeBad(st.inL, "L"), inR = judged && kneeBad(st.inR, "R");
   if (judged) { st.kneeHist.L.push(st.inL); st.kneeHist.R.push(st.inR); }
   const kneeIn = inL || inR;
@@ -339,7 +463,9 @@ function finishRep(view) {
   if (kneeIn) st.knee++;
   if (leanBad || headBad) st.form++;
   // 한 번에 하나만 말함. 다칠 위험이 큰 것부터: 무릎 → 상체 → 고개 → 깊이
-  let tip = kneeIn ? kneeTip : leanBad ? "가슴을 펴요" : headBad ? "고개 들고 앞을 봐요" :
+  // '자세 알려주기'를 끄면 자세 지적은 말하지 않음 (기록에는 남김)
+  const formOn = $("optForm").checked;
+  let tip = formOn && kneeIn ? kneeTip : formOn && leanBad ? "가슴을 펴요" : formOn && headBad ? "고개 들고 앞을 봐요" :
             deep ? "" : almost ? "거의! 조금만 더" : "조금 더 깊이";
   const n = NUM[st.reps] || String(st.reps);
   // 칭찬: 지적받은 걸 바로 고쳤을 때, 그리고 잘한 게 3번 이어질 때마다
@@ -350,14 +476,15 @@ function finishRep(view) {
     st.lastHadTip = false;
   } else { st.goodStreak = 0; st.lastHadTip = true; }
   // 응원 한마디 (반 왔을 때, 두 개 남았을 때)
-  const cheer = st.reps === Math.ceil(TARGET_REPS / 2) ? " 반 왔어요!" : st.reps === TARGET_REPS - 2 ? " 두 개 남았어요!" : "";
+  const TR = cur().reps;
+  const cheer = st.reps === Math.ceil(TR / 2) ? " 반 왔어요!" : st.reps === TR - 2 ? " 두 개 남았어요!" : "";
   // 힘들어하는지: 느려짐 / 얕아짐 / 자세 무너짐
   const dur = performance.now() - st.downAt;
   st.setReps.push({ dur, depth: 1 - st.minR, bad: leanBad || headBad, view });
   // 같은 방향에서 한 것끼리만 비교 (첫 영상: 앞에서 깊게 → 옆에서 일부러 얕게 한 걸 '힘듦'으로 봄)
   const same = st.setReps.filter(x => x.view === view);
   let tired = "";
-  if (!st.tiredSaid && same.length >= 5 && st.reps < TARGET_REPS) {
+  if (!st.tiredSaid && same.length >= 5 && st.reps < TR) {
     const avg = (a, k) => a.reduce((s, x) => s + x[k], 0) / a.length;
     const first = same.slice(0, 3), last = same.slice(-2);
     const why = [];
@@ -371,40 +498,80 @@ function finishRep(view) {
       log(`세트${st.set} ${st.reps}번째 뒤: 힘들어 보임 (${why.join(", ")})`);
     }
   }
-  say((tip ? `${n}, ${tip}` : n) + (st.reps < TARGET_REPS && !tired ? cheer : "") + tired);
+  say((tip ? `${n}, ${tip}` : n) + (st.reps < TR && !tired ? cheer : "") + tired);
   big(`${st.reps}개` + (tip ? ` · ${tip}` : "") + (tired ? " · 힘들면 쉬어도 돼요" : ""));
-  log(`세트${st.set} ${st.reps}번째: 깊이 ${Math.round((1 - st.minR) * 100)}%, 상체 ${Math.round(st.maxLean)}°, 고개 ${st.maxHead.toFixed(2)}` +
+  log(`${exInfo().name} 세트${st.set} ${st.reps}번째: 깊이 ${Math.round((1 - st.minR) * 100)}%, 상체 ${Math.round(st.maxLean)}°, 고개 ${st.maxHead.toFixed(2)}` +
       (view === "front" && st.inL > -9 ? `, 무릎 왼${st.inL.toFixed(2)}/오른${st.inR.toFixed(2)}` : "") +
       (kneeIn ? ` · 무릎 모임(${inL && inR ? "양쪽" : inL ? "왼쪽" : "오른쪽"})` : "") + (leanBad ? " · 상체 숙임" : "") + (headBad ? " · 고개 숙임" : "") +
       ` · ${(dur / 1000).toFixed(1)}초`);
   updateStats();
-  if (st.reps >= TARGET_REPS) startRest();
+  if (st.reps >= TR) startRest();
 }
 
 function startRest() {
-  if (st.set >= TARGET_SETS) {
-    st.running = false;
-    const msg = `오늘 운동 끝! 전체 ${st.total}개 중 깊이 OK ${st.deep}개, 무릎 모임 ${st.knee}번, 고개·상체 숙임 ${st.form}번`;
-    big("🏆 " + msg); say("수고했어요! " + msg); log(msg); stopAll(false); return;
+  const c = cur(), name = exInfo().name;
+  const deepN = st.setReps.filter(x => x.depth >= 1 - DEEP_OK).length;
+  const good = deepN >= Math.ceil(st.setReps.length * 0.7) ? "자세 아주 좋았어요." : "다음엔 조금 더 깊이 앉아 봐요.";
+  st.resting = true; st.mode = "rest"; st.restStart = performance.now(); st.restLeft = null;
+  if (st.set < c.sets) {          // 같은 운동 다음 세트
+    st.restSec = REST_SEC; st.nextEx = false;
+    say(`${name} ${st.set}세트 끝! 잘했어요. ${good} ${REST_SEC}초 쉬어요. 물 한 모금 드세요`);
+    big(`${st.set}세트 끝! 쉬는 시간 ${REST_SEC}초 💧`);
+    return;
   }
-  st.resting = true; st.restLeft = REST_SEC; st.mode = "rest"; st.restStart = performance.now();
-  const good = st.deep >= Math.ceil(st.total * 0.7) ? "자세 아주 좋았어요." : "다음 세트는 조금 더 깊이 앉아 봐요.";
-  say(`${st.set}세트 끝! 잘했어요. ${good} ${REST_SEC}초 쉬어요. 물 한 모금 드세요`);
-  big(`${st.set}세트 끝! 쉬는 시간 ${REST_SEC}초 💧`);
+  // 이 운동 끝 → 다음 운동 소개
+  const next = PROGRAM[st.exIdx + 1];
+  st.restSec = NEXT_REST_SEC; st.nextEx = true;
+  const nextName = next.stretch ? "마무리 스트레칭" : EXERCISES[next.ex].name;
+  const how = next.stretch ? "몸을 천천히 풀어 줄게요." : EXERCISES[next.ex].intro;
+  say(`${name} 끝! 정말 잘했어요. ${good} ${NEXT_REST_SEC}초 쉬고, 다음은 ${yeyo(nextName)}. ${how}` +
+      (next.stretch ? "" : " 자세가 처음이면 위의 자세 배우기를 눌러 봐요."));
+  big(`${name} 끝! 다음은 ${nextName} · ${NEXT_REST_SEC}초 쉬어요 💧`);
+  log(`${name} 끝 → 다음 ${nextName}`);
 }
 // 쉬는 시간 세기 — 장면마다 불림 (시계 기준이라 영상 시험에서도 똑같이 동작)
 function restTick() {
-  if (!st || st.mode !== "rest" || !st.running) return;
-  const left = REST_SEC - Math.floor((performance.now() - st.restStart) / 1000);
+  if (!st || !st.running) return;
+  if (st.mode === "stretch") return stretchTick();
+  if (st.mode !== "rest") return;
+  const left = st.restSec - Math.floor((performance.now() - st.restStart) / 1000);
   if (left === st.restLeft) return;
   st.restLeft = left; big(`쉬는 시간 ${Math.max(0, left)}초 💧`);
   if (left === 10) say("10초 남았어요. 슬슬 일어나 볼까요?");
   if (left > 0 && left <= 3) say(NUM[left]);
   if (left <= 0) {
-    st.resting = false; st.set++; st.reps = 0; st.phase = "up";
+    st.resting = false; st.reps = 0; st.phase = "up";
     st.setReps = []; st.tiredSaid = false; st.goodStreak = 0; st.lastHadTip = false;
-    $("hudSet").textContent = `세트 ${st.set}/${TARGET_SETS}`; updateStats();
-    setMode("position", `${st.set}세트 준비! 전신이 보이게 똑바로 서 주세요`, `${st.set}세트 준비할게요. 전신이 보이게 똑바로 서 주세요`);
+    if (st.nextEx) { st.exIdx++; st.set = 1; } else st.set++;
+    updateHud(); updateStats();
+    if (cur().stretch) return startStretch();
+    const name = exInfo().name;
+    setMode("position", `${name} ${st.set}세트 준비! 전신이 보이게 서 주세요`, `${name} ${st.set}세트 준비할게요. 전신이 보이게 서 주세요`);
+  }
+}
+// ===== 마무리 스트레칭 (시간만 재며 말로 안내) =====
+function startStretch() {
+  st.mode = "stretch"; st.stIdx = 0; st.stStart = performance.now(); st.stLast = null;
+  updateHud(); say("마무리 스트레칭이에요. 천천히 따라 해요.");
+}
+function stretchTick() {
+  const PREP = 6;   // 자세 잡는 시간
+  const item = STRETCH[st.stIdx];
+  if (!item) {
+    st.running = false;
+    const msg = `오늘 운동 끝! ${dayNo}일차 하체 완료. 전체 ${st.total}개 중 깊이 OK ${st.deep}개, 무릎 모임 ${st.knee}번, 고개·상체 숙임 ${st.form}번`;
+    big("🏆 " + msg); say("정말 수고했어요! " + msg); log(msg); st.exIdx = PROGRAM.length; stopAll(false); renderProgram(); return;
+  }
+  const t = Math.floor((performance.now() - st.stStart) / 1000);
+  if (t === st.stLast) return; st.stLast = t;
+  if (t === 0) { big(`🧘 ${item.name} — ${item.how}`); say(`${item.name}. ${item.how}`); log(`스트레칭: ${item.name}`); }
+  if (t >= PREP) {
+    const left = item.sec - (t - PREP);
+    if (left === item.sec) say(`${item.sec}초 버텨요. 숨은 편하게 쉬어요.`);
+    if (left > 0) big(`🧘 ${item.name} · ${left}초`);
+    if (left === 10) say("10초");
+    if (left > 0 && left <= 3) say(NUM[left]);
+    if (left <= 0) { say("좋아요, 천천히 풀어요."); st.stIdx++; st.stStart = performance.now(); st.stLast = null; }
   }
 }
 
@@ -466,8 +633,11 @@ function coachStart(R, full) {
       if (step === 2) { big("준비… 1"); say("하나"); }
       if (step >= 3) {
         st.phase = "up"; st.armed = false;
-        const resume = st.reps > 0;
-        setMode("go", resume ? `다시 시작! (${st.reps}개부터) 💪` : `${st.set}세트 시작! 💪`, resume ? "다시 시작!" : "시작!");
+        const resume = st.reps > 0, name = exInfo().name;
+        // 운동 첫 세트엔 주의할 것 한마디 (뒤꿈치는 카메라로 못 봐서 말로만 주의)
+        const firstTip = st.set === 1 ? (cur().ex === "lunge" ? " 좌우 번갈아, 앞발 뒤꿈치는 바닥에 붙여요." : " 뒤꿈치는 바닥에 붙여요.") : "";
+        setMode("go", resume ? `다시 시작! (${st.reps}개부터) 💪` : `${name} ${st.set}세트 시작! 💪`,
+                resume ? "다시 시작!" : "시작!" + firstTip);
       }
     }
   }
@@ -504,7 +674,7 @@ async function loadModel() {
   const { PoseLandmarker, FilesetResolver } = await import(`${LIB}/vision_bundle.mjs`);
   const files = await FilesetResolver.forVisionTasks(`${LIB}/wasm`);
   const make = delegate => PoseLandmarker.createFromOptions(files, {
-    baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: "VIDEO", numPoses: 1 });
+    baseOptions: { modelAssetPath: window.baroModelUrl || MODEL, delegate }, runningMode: "VIDEO", numPoses: 1 });
   try { landmarker = await make("GPU"); } catch (e) { landmarker = await make("CPU"); }
   return landmarker;
 }
@@ -546,16 +716,18 @@ async function startFromVideo(url) {
 window.baroStartVideo = startFromVideo;   // 시험용
 // 시험용: 영상을 한 장면씩 넘기며 빠르게 채점 (화면이 숨겨져도 동작). 시계를 영상 시간으로 바꿔서 돌림.
 //   frameUrl(i) → i번째 사진 주소 (영상을 미리 사진으로 풀어 둔 것), count = 사진 수
+let offBase = 0;   // 여러 번 돌려도 시각이 계속 늘어나게 (인식기가 시각이 거꾸로 가면 멈춤)
 window.baroOffline = async function (frameUrl, count, fps = 10) {
   stopAll(true); resetState(); await loadModel();
   const realNow = performance.now.bind(performance); let sim = 0;
   performance.now = () => sim;
   const said = []; const realSay = window.speechSynthesis.speak.bind(window.speechSynthesis);
-  window.speechSynthesis.speak = u => said.push(`${(sim / 1000).toFixed(1)}s ${u.text}`);
+  const base0 = offBase; window.baroOffT0 = base0;
+  window.speechSynthesis.speak = u => said.push(`${((sim - base0) / 1000).toFixed(1)}s ${u.text}`);
   try {
     st.running = true; setMode("position", "영상 빠른 채점 중…");
     for (let i = 0; i < count && st.running; i++) {
-      sim = i * 1000 / fps;
+      sim = offBase + i * 1000 / fps;
       const img = await createImageBitmap(await (await fetch(frameUrl(i))).blob());
       restTick();
       const res = landmarker.detectForVideo(img, sim + 1);
@@ -563,7 +735,7 @@ window.baroOffline = async function (frameUrl, count, fps = 10) {
       if (lm) { draw(lm, img.width, img.height); analyze(lm, img.width, img.height); } else coachLost();
       img.close();
     }
-  } finally { performance.now = realNow; window.speechSynthesis.speak = realSay; }
+  } finally { offBase = sim + 60000; performance.now = realNow; window.speechSynthesis.speak = realSay; }
   return { said, total: st.total, deep: st.deep, knee: st.knee, log: [...$("log").children].map(li => li.textContent).reverse() };
 };
 $("btnVideo").onclick = () => $("videoFile").click();
@@ -580,7 +752,8 @@ $("btnStart").onclick = async () => {
     video.classList.toggle("mirror", mirror); canvas.classList.toggle("mirror", mirror);
     st.running = true;
     setMode("position", "카메라 켜졌어요! 뒤로 2~3걸음 물러나서 머리부터 발끝까지 보이게 서 주세요",
-            "카메라 켜졌어요! 뒤로 두세 걸음 물러나서, 머리부터 발끝까지 보이게 서 주세요");
+            `${dayNo}일차 하체 운동 시작할게요! 첫 운동은 ${yeyo(exInfo().name)}. 뒤로 두세 걸음 물러나서, 머리부터 발끝까지 보이게 서 주세요`);
+    updateHud();
     if ($("optTempo").checked) startTempo();
     startLoop();
   } catch (e) {
@@ -648,6 +821,455 @@ $("btnPain").onclick = () => {
   big("😣 " + m); say(m); log("아파요 → 중단");
 };
 
+// ===================== 바른 자세 배우기 (코치가 말하면서 계속 시범) =====================
+// 막대인간이 처음부터 끝까지 쉬지 않고 운동하고, 그 위로 설명이 이어짐.
+// 나쁜 예는 한 번 스르륵 바뀌었다가 다시 바른 자세로 돌아옴. 카메라로 잡기 어려운 것(뒤꿈치, 균형, 등 말림)을 여기서 가르침.
+const TUTS = { squat: [
+  { m: "stance", hi: ["feet"], t: "발 위치",
+    x: "자, 같이 해 볼까요? 발은 어깨너비로 벌리고, 발끝은 살짝 바깥을 향하게 서요." },
+  { m: "reps", hi: ["hips"], t: "앉기",
+    x: "엉덩이를 뒤로 빼면서, 뒤에 있는 의자에 앉듯이 내려가요. 내려갈 때 숨을 들이마시고, 올라올 때 내쉬어요." },
+  { m: "reps", hi: ["balance", "heel"], bad: "heelUp", t: "균형과 뒤꿈치",
+    x: "체중은 발 가운데에 실어요. 초록 선 위에 몸의 중심이 있어야 균형이 잡혀요. 이렇게 뒤꿈치가 뜨면 안 돼요. 뒤꿈치는 끝까지 바닥에!" },
+  { m: "reps", hi: ["head"], bad: "headDown", t: "머리와 시선",
+    x: "시선은 2~3미터 앞 바닥을 보고, 목은 몸통과 일직선으로. 이렇게 고개를 푹 숙이지 마세요." },
+  { m: "reps", hi: ["torso"], bad: "rounded", t: "상체",
+    x: "가슴은 펴고 허리는 곧게. 상체가 조금 앞으로 기우는 건 괜찮아요. 하지만 이렇게 등이 둥글게 말리면 안 돼요." },
+  { m: "reps", hi: ["knees"], bad: "kneeIn", t: "무릎",
+    x: "무릎은 발끝 방향으로 벌어지게. 발끝보다 조금 앞으로 나가는 건 괜찮아요. 이렇게 안쪽으로 모이면 안 돼요." },
+  { m: "hold", hi: ["hips", "knees"], t: "깊이",
+    x: "깊이는 허벅지가 바닥과 평행할 때까지. 처음엔 편한 만큼만 내려가도 괜찮아요." },
+  { m: "reps", hi: [], outro: true, t: "같이 해 봐요",
+    x: "좋아요! 개수보다 바른 자세가 먼저예요. 아프면 바로 멈추고요. 이제 같이 해 봐요!" },
+], lunge: [
+  { m: "stance", hi: ["feet"], t: "서기",
+    x: "자, 런지예요. 발을 골반 너비로 벌리고 똑바로 서요. 손은 허리에 올려요." },
+  { m: "reps", hi: ["feet", "knees"], t: "내딛고 내려가기",
+    x: "한 발을 크게 앞으로 내딛고, 몸을 똑바로 아래로 내려요. 앞뒤 무릎이 모두 직각에 가깝게, 뒷무릎은 바닥에 닿기 직전까지만." },
+  { m: "reps", hi: ["torso", "head"], bad: "lean", t: "상체",
+    x: "상체는 꼿꼿하게, 시선은 앞을 봐요. 이렇게 상체가 앞으로 숙여지면 안 돼요." },
+  { m: "reps", hi: ["knees"], bad: "kneeIn", t: "앞 무릎",
+    x: "앞 무릎은 둘째 발가락 방향으로. 이렇게 안으로 모이면 안 돼요." },
+  { m: "reps", hi: ["heel"], bad: "heelUp", t: "앞발 뒤꿈치",
+    x: "앞발 뒤꿈치로 바닥을 밀면서 돌아와요. 이렇게 뒤꿈치가 뜨면 안 돼요." },
+  { m: "reps", hi: [], outro: true, t: "같이 해 봐요",
+    x: "왼발, 오른발 번갈아 해요. 한 번씩이 2개예요. 카메라는 앞에서 찍는 게 좋아요. 자, 같이 해 봐요!" },
+], wide: [
+  { m: "stance", hi: ["feet"], t: "발 위치",
+    x: "와이드 스쿼트예요. 발을 어깨보다 넓게 벌리고, 발끝은 바깥쪽으로 돌려요." },
+  { m: "reps", hi: ["hips", "torso"], bad: "rounded", t: "앉기",
+    x: "상체를 세운 채로, 엉덩이를 바로 아래로 내려요. 등이 이렇게 말리면 안 돼요." },
+  { m: "reps", hi: ["knees"], bad: "kneeIn", t: "무릎",
+    x: "무릎은 발끝 방향으로 활짝 벌려요. 허벅지 안쪽이 당기면 잘하고 있는 거예요. 안으로 모이면 안 돼요." },
+  { m: "reps", hi: ["heel", "feet"], bad: "heelUp", t: "뒤꿈치",
+    x: "뒤꿈치는 바닥에 붙이고, 발바닥 전체로 밀면서 올라와요." },
+  { m: "reps", hi: [], outro: true, t: "같이 해 봐요",
+    x: "좋아요, 잘 봤어요. 같이 해 봐요!" },
+] };
+let TUT = TUTS.squat;
+const BAD_LABEL = { heelUp: "뒤꿈치가 떠요", headDown: "고개를 푹 숙여요", rounded: "등이 둥글게 말려요",
+                    kneeIn: "무릎이 안으로 모여요", lean: "상체가 앞으로 숙여져요" };
+const tc = $("tutCanvas"), tx = tc.getContext("2d");
+let tut = { ex: "squat", sc: 0, scT: 0, repT: 0, repN: 0, gRep: 0, T: 0, last: 0, raf: 0,
+            paused: false, voiceDone: false, timer: 0, open: false, ended: false, holdT: 0, rising: 0 };
+
+const rad = d => d * Math.PI / 180;
+const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+const lerp = (a, b, t) => a + (b - a) * t;
+function hexRgb(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map(c => c + c).join(""); const n = parseInt(h, 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function mixColor(a, b, t) { const A = hexRgb(a), B = hexRgb(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], t))).join(",")})`; }
+function tutColors() {
+  const cs = getComputedStyle(document.documentElement), g = (k, f) => cs.getPropertyValue(k).trim() || f;
+  return { ink: g("--ink", "#1d2433"), muted: g("--muted", "#6b7385"), good: g("--good", "#1f9d55"),
+           bad: g("--bad", "#dc2626"), acc: g("--accent", "#2f6fed"), line: g("--line", "#e3e6ee"), bg: g("--bg", "#f6f7fb") };
+}
+
+// ---------- 동작 리듬 (한 번 = 몇 초, 그 안에서 앉은 정도 d와 내딛기 s) ----------
+const CYC = { squat: 5, wide: 5, lunge: 5.6 };
+function repPose(ex, p) {
+  if (ex === "lunge") {   // 멈춤 → 내딛기 → 내려가기 → 버티기 → 올라오기 → 돌아오기
+    if (p < 0.3) return { d: 0, s: 0 };
+    if (p < 1.1) return { d: 0, s: ease((p - 0.3) / 0.8) };
+    if (p < 2.6) return { d: ease((p - 1.1) / 1.5), s: 1 };
+    if (p < 2.9) return { d: 1, s: 1 };
+    if (p < 4.3) return { d: 1 - ease((p - 2.9) / 1.4), s: 1 };
+    if (p < 5.1) return { d: 0, s: 1 - ease((p - 4.3) / 0.8) };
+    return { d: 0, s: 0 };
+  }
+  // 스쿼트: 멈춤 → 천천히 앉기(2초) → 아래서 잠깐 → 올라오기 → 숨 고르기
+  if (p < 0.4) return { d: 0, s: 0 };
+  if (p < 2.4) return { d: ease((p - 0.4) / 2), s: 0 };
+  if (p < 2.9) return { d: 1, s: 0 };
+  if (p < 4.5) return { d: 1 - ease((p - 2.9) / 1.6), s: 0 };
+  return { d: 0, s: 0 };
+}
+
+// ---------- 내 프로필 → 체형 ----------
+// 성별·키·몸무게로 몸통 너비, 팔다리 굵기, 배 나온 정도를 정함. '체형 반영'이 0%면 표준 체형(BMI 22).
+const PROF_DEF = { sex: "m", age: 40, h: 170, w: 68, k: 100 };
+let prof = { ...PROF_DEF };
+try { Object.assign(prof, JSON.parse(localStorage.getItem("baro_profile") || "{}")); } catch (e) {}
+function bodyStyle() {
+  const h = Math.min(210, Math.max(120, +prof.h || 170)), w = Math.min(200, Math.max(30, +prof.w || 68));
+  const bmi = w / ((h / 100) ** 2), k = (+prof.k || 0) / 100;
+  const be = Math.min(40, Math.max(16, 22 + (bmi - 22) * k));
+  const fat = Math.max(-0.45, Math.min(1.3, (be - 22) / 11));    // 0 = 표준, 1 ≈ BMI 33
+  const f = prof.sex === "f";
+  return {
+    bmi, f, fat,
+    scale: Math.min(1.1, Math.max(0.88, h / 170)),
+    sh: (f ? 36 : 44) * (1 + 0.22 * fat),            // 어깨 반너비 (앞모습)
+    hip: (f ? 31 : 25) * (1 + 0.42 * fat),           // 엉덩이 반너비
+    waist: (f ? 25 : 30) * (1 + 0.55 * fat),         // 허리 반너비
+    leg: 15 * (1 + 0.5 * fat), arm: 9.5 * (1 + 0.45 * fat),
+    depth: 30 * (1 + 0.6 * fat),                     // 옆에서 본 몸통 두께
+    belly: Math.max(0, fat - 0.15) * 22,             // 옆에서 본 배 볼록
+    chest: f ? 6 : 0,
+  };
+}
+function saveProfile() { try { localStorage.setItem("baro_profile", JSON.stringify(prof)); } catch (e) {} }
+function showProfileInfo() {
+  const S = bodyStyle();
+  // 대한비만학회 기준(성인): 18.5 미만 저체중, 23 이상 비만 전단계, 25 이상 비만 — 참고용
+  const tag = S.bmi < 18.5 ? "저체중" : S.bmi < 23 ? "정상" : S.bmi < 25 ? "비만 전단계" : "비만";
+  $("pfInfo").textContent = `BMI ${S.bmi.toFixed(1)} (${tag}, 참고용). 시범 몸은 체형을 ${prof.k}% 반영해요.` +
+    (prof.k < 100 ? "" : " 너무 그대로라 부담되면 '체형 반영'을 줄여도 돼요.");
+}
+for (const [id, key] of [["pfSex", "sex"], ["pfAge", "age"], ["pfH", "h"], ["pfW", "w"], ["pfK", "k"]]) {
+  const el = $(id); el.value = prof[key];
+  el.addEventListener("input", () => {
+    prof[key] = key === "sex" ? el.value : +el.value; $("pfKv").textContent = prof.k + "%";
+    saveProfile(); showProfileInfo(); if (window.baroRedrawIdle) window.baroRedrawIdle();
+  });
+}
+$("pfKv").textContent = prof.k + "%"; showProfileInfo();
+let profSaved = false; try { profSaved = !!localStorage.getItem("baro_profile"); } catch (e) {}
+$("profBody").hidden = profSaved; $("profToggle").textContent = profSaved ? "펼치기" : "접기";
+$("profToggle").onclick = () => { const b = $("profBody"); b.hidden = !b.hidden; $("profToggle").textContent = b.hidden ? "펼치기" : "접기"; };
+
+// ---------- 그리기 ----------
+// P: { ex, d, s, stance, bad:{type, v}, hi:{이름: 진하기}, label:{text, bad, a}, breath, swap }
+const SKIN = "#f2c6a0", SHIRT = "#4f86e8", PANTS = "#2f3a4d", SHOE = "#1b1f27";
+function drawTut(P) {
+  const C = tutColors(), W = tc.width, H = tc.height, G = 350, S = bodyStyle();
+  tx.clearRect(0, 0, W, H); tx.lineCap = "round"; tx.lineJoin = "round";
+  const bv = P.bad ? P.bad.v : 0, bt = P.bad ? P.bad.type : "";
+  const B = k => bt === k ? bv : 0;      // 이 나쁜 예가 얼마나 섞였나 (0~1)
+  // 나쁜 예일수록 옷이 붉게
+  const tint = c => bv > 0 ? mixColor(c, "#dc2626", 0.75 * bv) : c;
+  const K = { skin: SKIN, shirt: tint(SHIRT), pants: tint(PANTS), shoe: SHOE, far: 0.42, bg: C.bg };
+  const H_ = k => (P.hi && P.hi[k]) || 0;
+  const glow = (x, y, r, a) => { if (a <= 0) return; tx.save(); tx.fillStyle = C.acc; tx.globalAlpha = 0.22 * a; tx.beginPath(); tx.arc(x, y, r, 0, 7); tx.fill(); tx.restore(); };
+  const seg = (a, b, w, col) => { tx.lineWidth = w; tx.strokeStyle = col; tx.beginPath(); tx.moveTo(a.x, a.y); tx.lineTo(b.x, b.y); tx.stroke(); };
+  const limb = (a, m, b, w, col, w2 = w) => { seg(a, m, w, col); seg(m, b, w2, col); tx.fillStyle = col; tx.beginPath(); tx.arc(m.x, m.y, Math.min(w, w2) / 2, 0, 7); tx.fill(); };
+  const poly = (pts, col) => { tx.fillStyle = col; tx.beginPath(); tx.moveTo(pts[0].x, pts[0].y); for (const p of pts.slice(1)) tx.lineTo(p.x, p.y); tx.closePath(); tx.fill(); };
+  // 머리: 얼굴 사진이 있으면 동그랗게 잘라서, 없으면 기본 얼굴
+  const headC = (p, r, look = 0) => {
+    tx.save(); tx.beginPath(); tx.arc(p.x, p.y, r, 0, 7); tx.closePath();
+    if (faceImg) { tx.clip(); tx.drawImage(faceImg, p.x - r, p.y - r, r * 2, r * 2); }
+    else {
+      tx.fillStyle = SKIN; tx.fill(); tx.fillStyle = "#3b2a20";
+      tx.beginPath(); tx.arc(p.x, p.y - r * 0.55, r * 0.95, Math.PI * 1.05, Math.PI * 1.95); tx.fill();   // 머리카락
+      tx.beginPath(); tx.arc(p.x - r * 0.33 + look, p.y + r * 0.05, 2.6, 0, 7); tx.arc(p.x + r * 0.33 + look, p.y + r * 0.05, 2.6, 0, 7); tx.fill();
+      tx.strokeStyle = "#a0523d"; tx.lineWidth = 2; tx.beginPath(); tx.arc(p.x + look, p.y + r * 0.3, r * 0.28, 0.15 * Math.PI, 0.85 * Math.PI); tx.stroke();
+    }
+    tx.restore();
+    tx.lineWidth = 2.5; tx.strokeStyle = bv > 0.5 ? C.bad : "rgba(0,0,0,.25)"; tx.beginPath(); tx.arc(p.x, p.y, r, 0, 7); tx.stroke();
+  };
+  // 제목은 왼쪽 위 구석에 (머리와 안 겹치게)
+  tx.font = "bold 17px sans-serif"; tx.fillStyle = C.muted; tx.textAlign = "left";
+  tx.fillText("옆에서 본 모습", 16, 24); tx.fillText("앞에서 본 모습", 416, 24);
+  tx.strokeStyle = C.line; tx.lineWidth = 4;
+  tx.beginPath(); tx.moveTo(40, G + 2); tx.lineTo(360, G + 2); tx.moveTo(440, G + 2); tx.lineTo(760, G + 2); tx.stroke();
+  const ctxD ={ C, G, B, K, S, H_, glow, seg, limb, poly, headC, br: P.breath || 0, bv };
+  if (P.ex === "lunge") drawLungeFig(P, ctxD); else drawSquatFig(P, ctxD);
+  if (P.label && P.label.a > 0) {
+    tx.save(); tx.globalAlpha = P.label.a; tx.font = "bold 26px sans-serif"; tx.textAlign = "center";
+    tx.fillStyle = P.label.bad ? C.bad : C.good; tx.fillText(P.label.text, 400, 386); tx.restore();
+  }
+}
+// 옆모습 몸통: 엉덩이~어깨를 두께 있는 모양으로 (배가 나오면 앞쪽이 볼록, 등이 말리면 휨)
+function sideTorso(hip, sh, lean, S, K, rounded, br) {
+  const ux = Math.sin(lean), uy = -Math.cos(lean);     // 위쪽 방향
+  const nx = Math.cos(lean), ny = Math.sin(lean);      // 앞쪽 방향
+  const dep = S.depth / 2, bel = S.belly * (1 + 0.04 * br), r = rounded;
+  const back = t => ({ x: lerp(hip.x, sh.x, t) - nx * dep - nx * 18 * r * Math.sin(Math.PI * t), y: lerp(hip.y, sh.y, t) - ny * dep - ny * 18 * r * Math.sin(Math.PI * t) - 8 * r * Math.sin(Math.PI * t) });
+  const front = t => { const b = bel * Math.sin(Math.PI * Math.min(1, t * 1.6)) + S.chest * Math.max(0, (t - 0.6) / 0.4);
+    return { x: lerp(hip.x, sh.x, t) + nx * (dep * (t > 0.7 ? 0.85 : 1) + b) - nx * 10 * r * Math.sin(Math.PI * t), y: lerp(hip.y, sh.y, t) + ny * (dep + b) }; };
+  const pts = []; for (let i = 0; i <= 8; i++) pts.push(back(i / 8)); for (let i = 8; i >= 0; i--) pts.push(front(i / 8));
+  tx.fillStyle = K.shirt; tx.beginPath(); tx.moveTo(pts[0].x, pts[0].y); for (const p of pts) tx.lineTo(p.x, p.y); tx.closePath(); tx.fill();
+  return { ux, uy };
+}
+
+function drawSquatFig(P, { C, G, B, K, S, H_, glow, seg, limb, poly, headC, br }) {
+  const d = P.d, wide = P.ex === "wide", sc = S.scale, SH = 78 * sc, TH = 80 * sc, TO = 88 * sc * (1 + 0.012 * br);
+  // ----- 옆모습 (오른쪽을 봄) -----
+  const heelUp = B("heelUp") * d;
+  const toe = { x: 215, y: G }, heel = { x: 150, y: G - 26 * heelUp };
+  const ankle = { x: 165 + 4 * heelUp, y: G - 14 - 22 * heelUp };
+  const shinA = rad((wide ? 24 : 36) * d + 10 * heelUp);
+  const knee = { x: ankle.x + SH * Math.sin(shinA), y: ankle.y - SH * Math.cos(shinA) };
+  const thA = rad(88 * d);
+  const hip = { x: knee.x - TH * Math.sin(thA), y: knee.y - TH * Math.cos(thA) };
+  const leanDeg = (wide ? 6 + 18 * d : 10 + 30 * d) + 22 * d * B("rounded") - 8 * d * B("heelUp") + 4 * S.fat * d;
+  const lean = rad(leanDeg);
+  const sh = { x: hip.x + TO * Math.sin(lean), y: hip.y - TO * Math.cos(lean) };
+  const tilt = lean + rad(lerp(-8, 60 * Math.max(d, 0.4), B("headDown")));
+  const R = 22 * sc;
+  const head = { x: sh.x + (R + 12) * Math.sin(tilt), y: sh.y - (R + 12) * Math.cos(tilt) };
+  glow(182, G - 6, 42, H_("feet")); glow(heel.x, heel.y, 26, H_("heel")); glow(knee.x, knee.y, 28, H_("knees"));
+  glow(hip.x, hip.y, 34, H_("hips")); glow((hip.x + sh.x) / 2, (hip.y + sh.y) / 2, 56, H_("torso")); glow(head.x, head.y, 36, H_("head"));
+  if (H_("balance") > 0) {
+    const mid = (toe.x + heel.x) / 2, com = { x: hip.x * 0.55 + sh.x * 0.25 + knee.x * 0.2, y: (hip.y + sh.y) / 2 };
+    tx.save(); tx.globalAlpha = H_("balance"); tx.setLineDash([8, 8]); tx.strokeStyle = C.good; tx.lineWidth = 3;
+    tx.beginPath(); tx.moveTo(mid, G); tx.lineTo(mid, 60); tx.stroke(); tx.restore();
+  }
+  // 신발 → 다리 → 몸통 → 팔 → 머리
+  poly([heel, { x: ankle.x - 4, y: ankle.y - 6 }, { x: toe.x - 18, y: G - 12 }, toe, { x: heel.x, y: G }], K.shoe);
+  limb(ankle, knee, hip, S.leg * 0.85, K.pants, S.leg);
+  tx.fillStyle = K.pants; tx.beginPath(); tx.arc(hip.x, hip.y, S.leg * 0.9, 0, 7); tx.fill();
+  sideTorso(hip, sh, lean, S, K, B("rounded") * d, br);
+  const elbow = { x: sh.x + lerp(14, 38, d), y: sh.y + lerp(34, 6, d) };
+  const hand = { x: sh.x + lerp(38, 76, d), y: sh.y + lerp(18, 10, d) };
+  limb(sh, elbow, hand, S.arm, K.shirt, S.arm * 0.8);
+  tx.fillStyle = SKIN; tx.beginPath(); tx.arc(hand.x, hand.y, S.arm * 0.55, 0, 7); tx.fill();
+  seg(sh, head, 9 * sc, SKIN);   // 목
+  headC(head, R, 3);
+  if (H_("balance") > 0) { const mid = (toe.x + heel.x) / 2, com = { x: hip.x * 0.55 + sh.x * 0.25 + knee.x * 0.2, y: (hip.y + sh.y) / 2 };
+    tx.save(); tx.globalAlpha = H_("balance"); tx.fillStyle = Math.abs(com.x - mid) < 28 ? C.good : C.bad; tx.beginPath(); tx.arc(com.x, com.y, 9, 0, 7); tx.fill(); tx.restore(); }
+  const gx = head.x + lerp(170, 45, B("headDown"));
+  tx.save(); tx.setLineDash([4, 8]); tx.strokeStyle = B("headDown") > 0.5 ? C.bad : C.acc; tx.lineWidth = 2; tx.globalAlpha = 0.7;
+  tx.beginPath(); tx.moveTo(head.x + R * 0.6, head.y); tx.lineTo(gx, G); tx.stroke(); tx.restore();
+
+  // ----- 앞모습 -----
+  const cx = 600, st0 = P.stance, kIn = B("kneeIn") * d;
+  const aw = lerp(16, wide ? 72 : 44, st0) * Math.max(1, S.hip / 28), toeX = lerp(10, wide ? 28 : 22, st0);
+  const aL = { x: cx - aw, y: G - 12 }, aR = { x: cx + aw, y: G - 12 };
+  const kx = aw + (wide ? 28 : 16) * d - (wide ? 44 : 34) * kIn;
+  const kneeY = G - 12 - SH + 22 * d;
+  const kL = { x: cx - kx, y: kneeY }, kR = { x: cx + kx, y: kneeY };
+  const hipY = kneeY - TH * (1 - 0.82 * d) + (wide ? 12 * d : 0);
+  const hw = S.hip * 0.62;
+  const hL = { x: cx - hw, y: hipY }, hR = { x: cx + hw, y: hipY };
+  const shY = hipY - TO * (1 - 0.18 * d) * (1 - 0.15 * B("rounded") * d);
+  const sL = { x: cx - S.sh, y: shY }, sR = { x: cx + S.sh, y: shY };
+  const hy = shY - lerp(R + 12, R - 4, B("headDown") * Math.max(d, 0.4));
+  glow(cx, G - 6, 74, H_("feet")); glow(kL.x, kL.y, 26, H_("knees")); glow(kR.x, kR.y, 26, H_("knees"));
+  glow(cx, hipY, 44, H_("hips")); glow(cx, (hipY + shY) / 2, 58, H_("torso")); glow(cx, hy, 34, H_("head"));
+  poly([{ x: aL.x + 6, y: aL.y - 4 }, { x: aL.x - toeX - 4, y: G }, { x: aL.x + 8, y: G }], K.shoe);
+  poly([{ x: aR.x - 6, y: aR.y - 4 }, { x: aR.x + toeX + 4, y: G }, { x: aR.x - 8, y: G }], K.shoe);
+  limb(aL, kL, hL, S.leg * 0.85, K.pants, S.leg); limb(aR, kR, hR, S.leg * 0.85, K.pants, S.leg);
+  // 몸통: 어깨~허리~엉덩이
+  const wY = lerp(hipY, shY, 0.45);
+  poly([{ x: cx - S.sh, y: shY - 4 }, { x: cx + S.sh, y: shY - 4 }, { x: cx + S.waist, y: wY }, { x: cx + S.hip, y: hipY + 6 },
+        { x: cx - S.hip, y: hipY + 6 }, { x: cx - S.waist, y: wY }], K.shirt);
+  poly([{ x: cx - S.hip, y: hipY - 2 }, { x: cx + S.hip, y: hipY - 2 }, { x: cx + S.hip * 0.9, y: hipY + 16 }, { x: cx - S.hip * 0.9, y: hipY + 16 }], K.pants);
+  const hdY = shY + lerp(34, 18, d), hdX = lerp(10, 16, d);
+  const eL = { x: cx - S.sh + 6, y: shY + lerp(32, 16, d) }, eR = { x: cx + S.sh - 6, y: shY + lerp(32, 16, d) };
+  limb(sL, eL, { x: cx - hdX, y: hdY }, S.arm, K.shirt, S.arm * 0.8); limb(sR, eR, { x: cx + hdX, y: hdY }, S.arm, K.shirt, S.arm * 0.8);
+  tx.fillStyle = SKIN; tx.beginPath(); tx.arc(cx, hdY, S.arm * 0.7, 0, 7); tx.fill();
+  seg({ x: cx, y: shY }, { x: cx, y: hy }, 10 * sc, SKIN);
+  headC({ x: cx, y: hy }, R);
+  if (H_("knees") > 0) {
+    tx.save(); tx.globalAlpha = H_("knees"); tx.setLineDash([5, 6]); tx.strokeStyle = C.good; tx.lineWidth = 2;
+    for (const s of [-1, 1]) { tx.beginPath(); tx.moveTo(cx + s * (aw + toeX), G); tx.lineTo(cx + s * (aw + toeX + (wide ? 28 : 18)), G - SH - 10); tx.stroke(); }
+    tx.restore();
+  }
+}
+
+// 런지: 한 발 내딛기(s) → 내려가기(d). swap이면 다른 발.
+function drawLungeFig(P, { C, G, B, K, S, H_, glow, seg, limb, poly, headC, br }) {
+  const d = P.d, s = P.s, sc = S.scale, SH = 78 * sc, TH = 80 * sc, TO = 88 * sc * (1 + 0.012 * br), R = 22 * sc;
+  const heelUp = B("heelUp") * d;
+  const farC = c => mixColor(c.startsWith("#") ? c : "#888888", K.bg, K.far);
+  // ----- 옆모습 -----
+  const bAnk = { x: 120, y: G - 14 - 8 * s }, bToe = { x: 146, y: G }, bHeel = { x: 106, y: G - 14 * s };
+  const fAnk = { x: lerp(120, 254, s) + 4 * heelUp, y: G - 14 - 16 * heelUp };
+  const fToe = { x: fAnk.x + 46, y: G }, fHeel = { x: fAnk.x - 14, y: G - 22 * heelUp };
+  const fShin = rad(-6 * s + 14 * d + 14 * heelUp);
+  const fKnee = { x: fAnk.x + SH * Math.sin(fShin), y: fAnk.y - SH * Math.cos(fShin) };
+  const fTh = rad(22 * s + 66 * d);
+  const hip = { x: fKnee.x - TH * Math.sin(fTh), y: fKnee.y - TH * Math.cos(fTh) };
+  const dx = bAnk.x - hip.x, dy = bAnk.y - hip.y, dist = Math.hypot(dx, dy) || 1;
+  let bKnee;
+  if (dist >= TH + SH - 0.5) bKnee = { x: hip.x + dx * TH / (TH + SH), y: hip.y + dy * TH / (TH + SH) };
+  else {
+    const a = (TH * TH - SH * SH + dist * dist) / (2 * dist), hh = Math.sqrt(Math.max(0, TH * TH - a * a));
+    const px = hip.x + a * dx / dist, py = hip.y + a * dy / dist;
+    const k1 = { x: px + hh * dy / dist, y: py - hh * dx / dist }, k2 = { x: px - hh * dy / dist, y: py + hh * dx / dist };
+    bKnee = k1.y > k2.y ? k1 : k2; bKnee.y = Math.min(bKnee.y, G - 10);
+  }
+  const lean = rad(3 * d + 38 * d * B("lean") + 3 * S.fat * d);
+  const sh = { x: hip.x + TO * Math.sin(lean), y: hip.y - TO * Math.cos(lean) };
+  const head = { x: sh.x + (R + 12) * Math.sin(lean - rad(6)), y: sh.y - (R + 12) * Math.cos(lean - rad(6)) };
+  glow((fAnk.x + 120) / 2 + 10, G - 6, 40 + 40 * s, H_("feet")); glow(fHeel.x, fHeel.y, 24, H_("heel"));
+  glow(fKnee.x, fKnee.y, 26, H_("knees")); glow(bKnee.x, bKnee.y, 24, H_("knees")); glow(hip.x, hip.y, 32, H_("hips"));
+  glow((hip.x + sh.x) / 2, (hip.y + sh.y) / 2, 54, H_("torso")); glow(head.x, head.y, 34, H_("head"));
+  // 먼 쪽 다리는 흐리게 (번갈아 바뀜)
+  const fP = P.swap ? farC(PANTS) : K.pants, bP = P.swap ? K.pants : farC(PANTS);
+  const drawBack = () => { seg(bHeel, bAnk, 9, SHOE); seg(bAnk, bToe, 9, SHOE); limb(bAnk, bKnee, hip, S.leg * 0.85, bP, S.leg); };
+  const drawFront = () => {
+    poly([fHeel, { x: fAnk.x - 4, y: fAnk.y - 6 }, { x: fToe.x - 18, y: G - 12 }, fToe, { x: fHeel.x, y: G }], SHOE);
+    limb(fAnk, fKnee, hip, S.leg * 0.85, fP, S.leg);
+  };
+  if (P.swap) { drawFront(); drawBack(); } else { drawBack(); drawFront(); }
+  tx.fillStyle = K.pants; tx.beginPath(); tx.arc(hip.x, hip.y, S.leg * 0.9, 0, 7); tx.fill();
+  sideTorso(hip, sh, lean, S, K, 0, br);
+  limb(sh, { x: sh.x - 6, y: sh.y + 36 }, { x: hip.x + 12, y: hip.y - 14 }, S.arm, K.shirt, S.arm * 0.8);   // 손은 허리에
+  seg(sh, head, 9 * sc, SKIN);
+  headC(head, R, 3);
+  tx.save(); tx.setLineDash([4, 8]); tx.strokeStyle = B("lean") > 0.5 ? C.bad : C.acc; tx.lineWidth = 2; tx.globalAlpha = 0.7;
+  tx.beginPath(); tx.moveTo(head.x + R * 0.6, head.y); tx.lineTo(head.x + lerp(200, 80, B("lean")), G); tx.stroke(); tx.restore();
+  if (H_("knees") > 0) { tx.save(); tx.globalAlpha = H_("knees"); tx.setLineDash([5, 6]); tx.strokeStyle = C.good; tx.lineWidth = 2;
+    tx.beginPath(); tx.moveTo(fAnk.x + 10, G); tx.lineTo(fAnk.x + 10, G - SH - 20); tx.stroke(); tx.restore(); }
+
+  // ----- 앞모습 -----
+  const cx = 600, sg = P.swap ? 1 : -1, kIn = B("kneeIn") * d, st0 = P.stance;
+  const off = lerp(16, 32, st0) * Math.max(1, S.hip / 28);
+  const fx = cx + sg * off, bx = cx - sg * off;
+  const fA = { x: fx, y: G - 12 + 6 * s }, bA = { x: bx, y: G - 12 - 6 * s };
+  const fK = { x: fx + sg * 4 - sg * 30 * kIn, y: fA.y - SH + 14 * d };
+  const hipY = fK.y - TH * (1 - 0.75 * d);
+  const bK = { x: bx, y: bA.y - SH * 0.95 + 62 * d };
+  const hw = S.hip * 0.62;
+  const hF = { x: cx + sg * hw, y: hipY }, hB = { x: cx - sg * hw, y: hipY };
+  const shY = hipY - TO * (1 - 0.3 * d * B("lean"));
+  const hy = shY - (R + 12);
+  glow(cx, G - 8, 64, H_("feet")); glow(fA.x, G - 6, 22, H_("heel")); glow(fK.x, fK.y, 26, H_("knees")); glow(bK.x, bK.y, 24, H_("knees"));
+  glow(cx, hipY, 42, H_("hips")); glow(cx, (hipY + shY) / 2, 56, H_("torso")); glow(cx, hy, 32, H_("head"));
+  seg(bA, { x: bA.x - sg * 6, y: G - 6 * s }, 8, SHOE); limb(bA, bK, hB, S.leg * 0.85, K.pants, S.leg);
+  poly([{ x: fA.x - 7, y: fA.y - 4 }, { x: fA.x + 7, y: fA.y - 4 }, { x: fA.x + sg * 14 + 4, y: G + 6 * s }, { x: fA.x - 6, y: G + 6 * s }], SHOE);
+  limb(fA, fK, hF, S.leg * 0.85, K.pants, S.leg);
+  const wY = lerp(hipY, shY, 0.45);
+  poly([{ x: cx - S.sh, y: shY - 4 }, { x: cx + S.sh, y: shY - 4 }, { x: cx + S.waist, y: wY }, { x: cx + S.hip, y: hipY + 6 },
+        { x: cx - S.hip, y: hipY + 6 }, { x: cx - S.waist, y: wY }], K.shirt);
+  poly([{ x: cx - S.hip, y: hipY - 2 }, { x: cx + S.hip, y: hipY - 2 }, { x: cx + S.hip * 0.9, y: hipY + 16 }, { x: cx - S.hip * 0.9, y: hipY + 16 }], K.pants);
+  limb({ x: cx - S.sh, y: shY }, { x: cx - S.sh - 8, y: shY + 32 }, { x: cx - S.waist, y: wY + 6 }, S.arm, K.shirt, S.arm * 0.8);
+  limb({ x: cx + S.sh, y: shY }, { x: cx + S.sh + 8, y: shY + 32 }, { x: cx + S.waist, y: wY + 6 }, S.arm, K.shirt, S.arm * 0.8);
+  seg({ x: cx, y: shY }, { x: cx, y: hy }, 10 * sc, SKIN);
+  headC({ x: cx, y: hy }, R);
+  if (H_("knees") > 0) { tx.save(); tx.globalAlpha = H_("knees"); tx.setLineDash([5, 6]); tx.strokeStyle = C.good; tx.lineWidth = 2;
+    tx.beginPath(); tx.moveTo(fA.x + sg * 4, G); tx.lineTo(fA.x + sg * 4, G - SH - 20); tx.stroke(); tx.restore(); }
+}
+// 프로필을 바꾸면 (시범이 멈춰 있을 때) 바로 다시 그림
+window.baroRedrawIdle = () => { if (!tut.open) drawTut({ ex: tut.ex, d: 0.55, s: 0, stance: 1, bad: null, hi: {}, label: null, breath: 0, swap: false }); };
+
+// ---------- 진행 (장면은 한 번 동작이 끝난 순간에 바뀜 → 동작이 끊기지 않음) ----------
+function tutState() {
+  const sc = TUT[tut.sc], ex = tut.ex, cyc = CYC[ex];
+  let d = 0, s = 0, stance = 1;
+  if (sc.m === "stance") { stance = ease(tut.scT / 1.4); }
+  else if (sc.m === "hold") {
+    const down = ease(tut.holdT / 2);
+    d = tut.rising ? 1 - ease(tut.rising / 1.6) : down;
+  } else if (!tut.ended) { ({ d, s } = repPose(ex, tut.repT)); }
+  // 나쁜 예: 첫 번째는 바르게 → 두 번째에 스르륵 나빠짐 → 세 번째에 다시 바르게
+  let bad = null, label = null;
+  if (sc.bad) {
+    let v = 0;
+    if (tut.repN === 1) v = ease(tut.repT / 0.6);
+    else if (tut.repN === 2) v = 1 - ease(tut.repT / 0.6);
+    bad = { type: sc.bad, v };
+    if (tut.repN === 1) label = { text: "❌ " + BAD_LABEL[sc.bad], bad: true, a: v };
+    else label = { text: tut.repN === 0 ? "✅ 바른 자세" : "✅ 다시 바르게", bad: false, a: tut.repN === 2 ? 1 - v * 0 : ease(tut.scT / 0.6) };
+  }
+  if (sc.outro && tut.ended) label = { text: "👍 이제 같이 해 봐요!", bad: false, a: 1 };
+  const hiA = ease(tut.scT / 0.6), hi = {};
+  for (const k of sc.hi) hi[k] = hiA;
+  return { ex, d, s, stance, bad, hi, label, breath: Math.sin(tut.T * 2 * Math.PI / 3.2), swap: tut.gRep % 2 === 1 };
+}
+function tutFrame(now) {
+  const dt = tut.paused ? 0 : Math.min(0.05, (now - (tut.last || now)) / 1000); tut.last = now;
+  tut.T += dt; tut.scT += dt;
+  const sc = TUT[tut.sc], cyc = CYC[tut.ex];
+  if (sc.m === "stance") {
+    if (tut.voiceDone && tut.scT > 3) tutNextScene();
+  } else if (sc.m === "hold") {
+    tut.holdT += dt;
+    if (tut.voiceDone && tut.holdT > 2.5 && !tut.rising) tut.rising = 0.0001;
+    if (tut.rising) { tut.rising += dt; if (tut.rising > 2) tutNextScene(); }
+  } else if (!tut.ended) {
+    tut.repT += dt;
+    if (tut.repT >= cyc) {
+      tut.repT -= cyc; tut.repN++; tut.gRep++;
+      const need = sc.bad ? 3 : 1;
+      if (sc.outro) { if (tut.voiceDone && tut.repN >= 1) { tut.ended = true; tutMarkSeen(); } }
+      else if (tut.voiceDone && tut.repN >= need) tutNextScene();
+    }
+  }
+  drawTut(tutState());
+  if (tut.open) tut.raf = requestAnimationFrame(tutFrame);
+}
+function tutSpeak(text) {
+  tut.voiceDone = false; clearTimeout(tut.timer);
+  const done = () => { tut.voiceDone = true; };
+  tut.timer = setTimeout(done, Math.max(3500, text.length * 100));   // 음성이 꺼져 있어도 읽을 시간
+  if (!$("optVoice").checked || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = "ko-KR"; u.rate = 1.0;
+  u.onend = () => { clearTimeout(tut.timer); done(); };
+  speechSynthesis.speak(u);
+}
+function tutShowScene() {
+  const s = TUT[tut.sc];
+  $("tutTitle").textContent = s.t; $("tutText").textContent = s.x;
+  $("tutDots").innerHTML = TUT.map((_, k) => `<i class="${k <= tut.sc ? "on" : ""}"></i>`).join("");
+  $("tutNext").textContent = tut.sc === TUT.length - 1 ? (st.running ? "✔ 다 봤어요" : "📷 운동 시작") : "다음 ▶";
+  tutSpeak(s.x);
+}
+function tutGoScene(i) {
+  tut.sc = Math.max(0, Math.min(TUT.length - 1, i));
+  tut.scT = 0; tut.repT = 0; tut.repN = 0; tut.holdT = 0; tut.rising = 0; tut.ended = false;
+  tutShowScene();
+}
+function tutNextScene() { if (tut.sc < TUT.length - 1) tutGoScene(tut.sc + 1); }
+const seenKey = ex => ex === "squat" ? "baro_tut_done" : "baro_tut_done_" + ex;
+function tutMarkSeen() { try { localStorage.setItem(seenKey(tut.ex), "1"); } catch (e) {} }
+function tutOpen(ex) {
+  if (typeof ex !== "string") ex = tut.ex;
+  // 운동 중에는 쉬는 시간에만 (말이 겹치지 않게)
+  if (st.running && st.mode !== "rest") { big("자세 배우기는 쉬는 시간에 볼 수 있어요 🙂"); return; }
+  if (tut.open) tutClose();
+  tut.ex = ex; TUT = TUTS[ex] || TUTS.squat; $("tutName").textContent = EXERCISES[ex].name;
+  tut.open = true; tut.paused = false; tut.T = 0; tut.gRep = 0; tut.last = 0;
+  $("tutOpen").hidden = true; $("tutBody").hidden = false; $("tutCtl").hidden = false; $("tutPause").textContent = "⏸ 잠깐";
+  $("tutCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  tutGoScene(0); cancelAnimationFrame(tut.raf); tut.raf = requestAnimationFrame(tutFrame);
+}
+function tutClose() {
+  tut.open = false; cancelAnimationFrame(tut.raf); clearTimeout(tut.timer);
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  $("tutBody").hidden = true; $("tutCtl").hidden = true; $("tutOpen").hidden = false; $("tutOpen").textContent = "▶ 다시 보기";
+}
+$("tutOpen").onclick = () => tutOpen(tut.ex);
+$("tutClose").onclick = tutClose;
+$("tutPrev").onclick = () => tutGoScene(tut.sc - 1);
+$("tutNext").onclick = () => {
+  if (tut.sc === TUT.length - 1) { tutMarkSeen(); tutClose(); if (!st.running) $("btnStart").click(); }
+  else tutGoScene(tut.sc + 1);
+};
+$("tutPause").onclick = () => {
+  tut.paused = !tut.paused;
+  if ("speechSynthesis" in window) { if (tut.paused) speechSynthesis.pause(); else speechSynthesis.resume(); }
+  $("tutPause").textContent = tut.paused ? "▶ 계속" : "⏸ 잠깐";
+};
+// 처음 온 사람에게는 펼쳐서 보여 주고(소리는 버튼을 눌러야 나옴), 본 적 있으면 접어 둠
+let tutSeen = false; try { tutSeen = localStorage.getItem(seenKey("squat")) === "1"; } catch (e) {}
+if (tutSeen) $("tutOpen").textContent = "▶ 다시 보기";
+else {
+  $("tutBody").hidden = false; $("tutOpen").textContent = "▶ 시작";
+  $("tutTitle").textContent = "처음이시면 먼저 봐 주세요 🙂";
+  $("tutText").textContent = "▶ 시작을 누르면 코치가 직접 시범을 보이면서 머리부터 발까지 바른 자세를 알려 드려요. 한 번 보고 나면 다음부터는 접혀 있어요.";
+  window.baroRedrawIdle();
+}
+// 운동을 시작하면 시범은 닫음
+for (const id of ["btnStart", "btnDemo", "btnVideo"]) $(id).addEventListener("click", () => { if (tut.open) tutClose(); }, true);
+// 쉬는 시간이 끝나면 시범도 닫음 (운동 다시 시작하니까)
+setInterval(() => { if (tut.open && st.running && st.mode !== "rest") tutClose(); }, 500);
+window.baroTut = { open: tutOpen, draw: drawTut, state: () => tut, frame: tutFrame, pose: repPose };   // 시험용
+window.baroTest = { st: () => st, startRest, restTick, finishRep };   // 시험용
+
+{ const d = new Date(); $("dayLabel").innerHTML = `<b>${dayNo}일차</b> (${d.getMonth() + 1}월 ${d.getDate()}일)`; }
 resetState();
 </script>
 </body>
