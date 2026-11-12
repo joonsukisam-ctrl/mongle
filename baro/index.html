@@ -39,7 +39,7 @@
   .pill { background: rgba(0,0,0,.6); color: #fff; padding: 6px 10px; border-radius: 999px; font-size: 14px; }
   .big { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; color: #fff;
          font-size: 22px; font-weight: bold; text-shadow: 0 2px 6px #000; pointer-events: none; padding: 0 10px; }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; }
   .stats div { background: var(--bg); border-radius: 10px; padding: 8px 4px; }
   .stats b { display: block; font-size: 22px; }
   .stats span { font-size: 12px; color: var(--muted); }
@@ -96,6 +96,7 @@
       <div><b id="stTotal">0</b><span>전체 개수</span></div>
       <div><b id="stDeep">0</b><span>깊이 OK</span></div>
       <div><b id="stKnee">0</b><span>무릎 모임</span></div>
+      <div><b id="stForm">0</b><span>고개·상체</span></div>
     </div>
   </section>
 
@@ -105,7 +106,8 @@
   </section>
 
   <p class="note">
-    ⚠️ 시험판이에요. 깊이와 무릎 판단 기준은 <b>아직 검증 전</b>이고, 카메라 한 대라 오차가 있어요.
+    ⚠️ 시험판이에요. 깊이·무릎·고개·상체 판단 기준은 <b>아직 검증 중</b>이고, 카메라 한 대라 오차가 있어요.
+    허리가 둥글게 말리는 것 자체는 카메라로 볼 수 없어서, 상체가 많이 숙여지는 것으로 대신 알려 줘요.
     확실히 크게 벗어날 때만 알려 주도록 해 뒀어요. 아프면 바로 멈추세요.
     영상은 이 기기 안에서만 처리되고 어디에도 보내지 않아요.
   </p>
@@ -120,6 +122,14 @@ const DEEP_OK    = 0.40;   // 가장 낮을 때 비율이 이 이하 → 깊이 
 const DEEP_ALMOST= 0.60;   // 이 이하 → '거의'
 const KNEE_IN    = 0.75;   // (앞에서 볼 때) 무릎 간격 ÷ 발목 간격 이 이하 → 무릎 모임
 const VIS_MIN    = 0.5;    // 이보다 안 보이면 판단 안 함
+// 자세 (크게 벗어날 때만 알려 주도록 넉넉하게 잡음)
+const LEAN_MAX   = 60;     // 상체가 똑바로 선 것에서 이 각도(도) 넘게 숙여지면 '상체 숙임'
+const HEAD_DOWN  = 45;     // (옆) 얼굴 방향이 몸통 기준보다 이 각도 넘게 아래로 → '고개 숙임'
+const HEAD_DROP  = 0.35;   // (앞) 어깨~코 높이가 서 있을 때의 이 비율 아래로 → '고개 숙임'
+// 힘들어하는지: 세트 앞쪽 3개와 최근 2개 비교
+const SLOW_X     = 1.5;    // 1개 하는 시간이 1.5배 넘게 늘어남
+const SHALLOW_BY = 0.20;   // 깊이가 20%p 넘게 얕아짐
+const STUCK_MS   = 6000;   // 앉은 채로 6초 넘게 못 일어남
 
 const LIB = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 const MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
@@ -162,12 +172,14 @@ function resetState() {
          phase: "up", minR: 9, minKnee: 9, standSamples: {}, standRatio: 1, rEma: null, frames: 0,
          resting: false, restLeft: 0, running: false,
          // 코치 진행 단계: position(자리 잡기) → ready(대기) → countdown(셋둘하나) → go(운동) / paused / rest
-         mode: "idle", modeSince: 0, lastHintAt: 0, okSince: 0, lostSince: 0, cdStep: -1 };
+         mode: "idle", modeSince: 0, lastHintAt: 0, okSince: 0, lostSince: 0, cdStep: -1,
+         // 자세·힘듦
+         form: 0, goodStreak: 0, setReps: [], tiredSaid: false, base: {} };
   $("log").innerHTML = ""; updateStats(); $("hudSet").textContent = `세트 1/${TARGET_SETS}`;
 }
 function updateStats() {
   $("stReps").textContent = `${st.reps}/${TARGET_REPS}`; $("stTotal").textContent = st.total;
-  $("stDeep").textContent = st.deep; $("stKnee").textContent = st.knee;
+  $("stDeep").textContent = st.deep; $("stKnee").textContent = st.knee; $("stForm").textContent = st.form;
 }
 function big(t) { $("bigMsg").textContent = t; }
 function log(t) { const li = document.createElement("li"); li.textContent = t; $("log").prepend(li); }
@@ -229,35 +241,119 @@ function analyze(lm, w, h) {
   st.frames++;
   $("hudDepth").textContent = `깊이: ${Math.max(0, Math.round((1 - R) * 100))}%` + (view === "side" ? ` · 무릎 ${Math.round(kneeAng)}°` : "");
 
+  // ----- 자세: 상체 숙임, 고개 숙임 -----
+  const posture = measurePosture(lm, w, h, view, R, vis);
+
   coachStart(R, full);
   if (st.mode !== "go") return;
 
   const kneeRatio = Math.abs(lk.x - rk.x) / (Math.abs(la.x - ra.x) || 1);
-  if (st.phase === "up" && R < DOWN_START) { st.phase = "down"; st.minR = R; st.minKnee = 9; st.upSince = 0; }
+  // '시작!' 뒤에 한 번은 똑바로 선 걸 봐야 세기 시작 (11-12 두 번째 영상: 셋둘하나 중에 앉아 있던 걸 1개로 셈)
+  if (!st.armed) { if (R > UP_DONE) st.armed = true; else return; }
+  if (st.phase === "up" && R < DOWN_START) {
+    st.phase = "down"; st.minR = R; st.minKnee = 9; st.upSince = 0;
+    st.downAt = performance.now(); st.maxLean = 0; st.maxHead = 0; st.stuckSaid = false;
+  }
   if (st.phase === "down") {
     st.minR = Math.min(st.minR, R);
     if (view === "front" && legs.length === 2 && R < 0.7) st.minKnee = Math.min(st.minKnee, kneeRatio);
+    // 자세는 앉아 있는 동안(깊이 30% 넘게)만 봄 → 일어서다 잠깐 흔들린 건 무시
+    if (R < 0.7) { st.maxLean = Math.max(st.maxLean, posture.lean); st.maxHead = Math.max(st.maxHead, posture.head); }
     // 다 일어선 상태가 0.25초 이어질 때만 1개 (10-12 영상 72초: 깊이 앉은 순간 값이 튀어 2개로 셈)
     const now = performance.now();
-    if (R > UP_DONE) { if (!st.upSince) st.upSince = now; } else st.upSince = 0;
+    // 앉은 채로 오래 못 일어나면 괜찮은지 물어봄
+    if (!st.stuckSaid && now - st.downAt > STUCK_MS && R < 0.7) {
+      st.stuckSaid = true; big("괜찮으세요? 힘들면 천천히 일어나서 쉬어요"); say("괜찮으세요? 힘들면 천천히 일어나서 쉬어요");
+      log(`세트${st.set}: 앉은 채로 ${Math.round(STUCK_MS / 1000)}초 넘음 → 괜찮은지 물어봄`);
+    }
+    // + 무릎도 펴져 있어야 함 (두 번째 영상 158초: 옆에서 깊이 앉은 순간 인식이 튀어 1개 더 셈)
+    if (R > UP_DONE && kneeAng > 150) { if (!st.upSince) st.upSince = now; } else st.upSince = 0;
     if (st.upSince && now - st.upSince >= 250) { st.phase = "up"; st.upSince = 0; finishRep(view); }
   }
 }
 
+// 자세 재기 — 매 장면. lean: 상체가 숙여진 각도(도), head: 고개 숙임 정도(넘으면 1 이상)
+function measurePosture(lm, w, h, view, R, vis) {
+  const out = { lean: 0, head: 0 };
+  if (!(vis(11) && vis(12) && vis(23) && vis(24)) && !(view !== "front" && (vis(11) || vis(12)) && (vis(23) || vis(24)))) return out;
+  // 옆에서는 잘 보이는 쪽 어깨·엉덩이 하나씩 써도 됨
+  const pick = (a, b) => { const A = P(lm, a, w, h), B = P(lm, b, w, h); return vis(a) && vis(b) ? { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 } : (vis(a) ? A : B); };
+  const sh = pick(11, 12), hip = pick(23, 24);
+  const torsoV = hip.y - sh.y;
+  if (torsoV <= 0) return out;
+  const b = st.base[view] || (st.base[view] = {});
+  const standing = R > 0.9;
+  if (view === "front") {
+    // 앞에서는 상체가 카메라 쪽으로 숙여지면 몸통이 짧아 보임 → 서 있을 때와 비교
+    if (standing) b.torso = b.torso ? b.torso * 0.9 + torsoV * 0.1 : torsoV;
+    if (b.torso) out.lean = Math.acos(Math.min(1, torsoV / b.torso)) * 180 / Math.PI;
+    if (vis(0)) {
+      const nose = P(lm, 0, w, h), hn = (sh.y - nose.y) / torsoV;   // 몸통 길이 대비 코 높이
+      if (standing) b.hn = b.hn ? b.hn * 0.9 + hn * 0.1 : hn;
+      if (b.hn && b.torso) out.head = (hn < b.hn * HEAD_DROP) ? 1 : 0;
+    }
+  } else {
+    out.lean = Math.atan2(Math.abs(sh.x - hip.x), torsoV) * 180 / Math.PI;
+    // 얼굴 방향(귀→코)이 몸통에 직각인 게 정상. 그보다 아래로 꺾인 각도
+    const ear = vis(7) && (!vis(8) || (lm[7].visibility ?? 1) >= (lm[8].visibility ?? 1)) ? 7 : vis(8) ? 8 : -1;
+    if (ear >= 0 && vis(0)) {
+      const E = P(lm, ear, w, h), N = P(lm, 0, w, h);
+      const fx = N.x - E.x, fy = N.y - E.y, ux = sh.x - hip.x, uy = sh.y - hip.y;
+      const cos = (fx * ux + fy * uy) / ((Math.hypot(fx, fy) * Math.hypot(ux, uy)) || 1);
+      const flex = Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI - 90;
+      out.head = flex / HEAD_DOWN;   // 1 넘으면 숙임
+    }
+  }
+  return out;
+}
+
+const PRAISE = ["좋아요!", "자세 좋아요!", "잘하고 있어요!", "훌륭해요!"];
 function finishRep(view) {
   st.reps++; st.total++;
   const deep = st.minR <= DEEP_OK, almost = st.minR <= DEEP_ALMOST;
   const kneeIn = view === "front" && st.minKnee < KNEE_IN;
+  const leanBad = st.maxLean > LEAN_MAX, headBad = st.maxHead >= 1;
   if (deep) st.deep++;
   if (kneeIn) st.knee++;
-  let tip = deep ? "좋아요!" : almost ? "거의! 조금만 더" : "조금 더 깊이";
-  if (kneeIn) tip = "무릎을 바깥으로";
+  if (leanBad || headBad) st.form++;
+  // 한 번에 하나만 말함. 다칠 위험이 큰 것부터: 무릎 → 상체 → 고개 → 깊이
+  let tip = kneeIn ? "무릎을 바깥으로" : leanBad ? "가슴을 펴요" : headBad ? "고개 들고 앞을 봐요" :
+            deep ? "" : almost ? "거의! 조금만 더" : "조금 더 깊이";
   const n = NUM[st.reps] || String(st.reps);
+  // 칭찬: 지적받은 걸 바로 고쳤을 때, 그리고 잘한 게 3번 이어질 때마다
+  if (!tip) {
+    st.goodStreak++;
+    if (st.lastHadTip) tip = "좋아요, 바로 그거예요!";
+    else if (st.goodStreak % 3 === 0) tip = PRAISE[(st.goodStreak / 3 - 1) % PRAISE.length];
+    st.lastHadTip = false;
+  } else { st.goodStreak = 0; st.lastHadTip = true; }
   // 응원 한마디 (반 왔을 때, 두 개 남았을 때)
-  const cheer = st.reps === Math.ceil(TARGET_REPS / 2) ? ", 반 왔어요!" : st.reps === TARGET_REPS - 2 ? ", 두 개 남았어요!" : "";
-  say((deep && !kneeIn ? n : `${n}, ${tip}`) + (st.reps < TARGET_REPS ? cheer : ""));
-  big(`${st.reps}개 · ${tip}`);
-  log(`세트${st.set} ${st.reps}번째: 깊이 ${Math.round((1 - st.minR) * 100)}%` + (kneeIn ? " · 무릎 모임" : "") + (view !== "front" ? " (무릎 모임은 앞에서만 판단)" : ""));
+  const cheer = st.reps === Math.ceil(TARGET_REPS / 2) ? " 반 왔어요!" : st.reps === TARGET_REPS - 2 ? " 두 개 남았어요!" : "";
+  // 힘들어하는지: 느려짐 / 얕아짐 / 자세 무너짐
+  const dur = performance.now() - st.downAt;
+  st.setReps.push({ dur, depth: 1 - st.minR, bad: leanBad || headBad, view });
+  // 같은 방향에서 한 것끼리만 비교 (첫 영상: 앞에서 깊게 → 옆에서 일부러 얕게 한 걸 '힘듦'으로 봄)
+  const same = st.setReps.filter(x => x.view === view);
+  let tired = "";
+  if (!st.tiredSaid && same.length >= 5 && st.reps < TARGET_REPS) {
+    const avg = (a, k) => a.reduce((s, x) => s + x[k], 0) / a.length;
+    const first = same.slice(0, 3), last = same.slice(-2);
+    const why = [];
+    // 최근 2개가 '둘 다' 그래야 함 (한 번 일부러 얕게 한 것에 반응하지 않게)
+    if (last.every(x => x.dur > avg(first, "dur") * SLOW_X)) why.push("느려짐");
+    if (last.every(x => x.depth < avg(first, "depth") - SHALLOW_BY)) why.push("얕아짐");
+    if (last.every(x => x.bad) && first.filter(x => x.bad).length <= 1) why.push("자세 무너짐");
+    if (why.length) {
+      st.tiredSaid = true;
+      tired = " 조금 힘드신가요? 무리하지 마세요. 힘들면 이번 세트는 여기서 쉬어도 괜찮아요.";
+      log(`세트${st.set} ${st.reps}번째 뒤: 힘들어 보임 (${why.join(", ")})`);
+    }
+  }
+  say((tip ? `${n}, ${tip}` : n) + (st.reps < TARGET_REPS && !tired ? cheer : "") + tired);
+  big(`${st.reps}개` + (tip ? ` · ${tip}` : "") + (tired ? " · 힘들면 쉬어도 돼요" : ""));
+  log(`세트${st.set} ${st.reps}번째: 깊이 ${Math.round((1 - st.minR) * 100)}%, 상체 ${Math.round(st.maxLean)}°` +
+      (kneeIn ? " · 무릎 모임" : "") + (leanBad ? " · 상체 숙임" : "") + (headBad ? " · 고개 숙임" : "") +
+      ` · ${(dur / 1000).toFixed(1)}초`);
   updateStats();
   if (st.reps >= TARGET_REPS) startRest();
 }
@@ -265,25 +361,28 @@ function finishRep(view) {
 function startRest() {
   if (st.set >= TARGET_SETS) {
     st.running = false;
-    const msg = `오늘 운동 끝! 전체 ${st.total}개 중 깊이 OK ${st.deep}개, 무릎 모임 ${st.knee}번`;
+    const msg = `오늘 운동 끝! 전체 ${st.total}개 중 깊이 OK ${st.deep}개, 무릎 모임 ${st.knee}번, 고개·상체 숙임 ${st.form}번`;
     big("🏆 " + msg); say("수고했어요! " + msg); log(msg); stopAll(false); return;
   }
-  st.resting = true; st.restLeft = REST_SEC; st.mode = "rest";
+  st.resting = true; st.restLeft = REST_SEC; st.mode = "rest"; st.restStart = performance.now();
   const good = st.deep >= Math.ceil(st.total * 0.7) ? "자세 아주 좋았어요." : "다음 세트는 조금 더 깊이 앉아 봐요.";
   say(`${st.set}세트 끝! 잘했어요. ${good} ${REST_SEC}초 쉬어요. 물 한 모금 드세요`);
   big(`${st.set}세트 끝! 쉬는 시간 ${REST_SEC}초 💧`);
-  const t = setInterval(() => {
-    if (!st.running) { clearInterval(t); return; }
-    st.restLeft--; big(`쉬는 시간 ${st.restLeft}초 💧`);
-    if (st.restLeft === 10) say("10초 남았어요. 슬슬 일어나 볼까요?");
-    if (st.restLeft > 0 && st.restLeft <= 3) say(NUM[st.restLeft]);
-    if (st.restLeft <= 0) {
-      clearInterval(t);
-      st.resting = false; st.set++; st.reps = 0; st.phase = "up";
-      $("hudSet").textContent = `세트 ${st.set}/${TARGET_SETS}`; updateStats();
-      setMode("position", `${st.set}세트 준비! 전신이 보이게 똑바로 서 주세요`, `${st.set}세트 준비할게요. 전신이 보이게 똑바로 서 주세요`);
-    }
-  }, 1000);
+}
+// 쉬는 시간 세기 — 장면마다 불림 (시계 기준이라 영상 시험에서도 똑같이 동작)
+function restTick() {
+  if (!st || st.mode !== "rest" || !st.running) return;
+  const left = REST_SEC - Math.floor((performance.now() - st.restStart) / 1000);
+  if (left === st.restLeft) return;
+  st.restLeft = left; big(`쉬는 시간 ${Math.max(0, left)}초 💧`);
+  if (left === 10) say("10초 남았어요. 슬슬 일어나 볼까요?");
+  if (left > 0 && left <= 3) say(NUM[left]);
+  if (left <= 0) {
+    st.resting = false; st.set++; st.reps = 0; st.phase = "up";
+    st.setReps = []; st.tiredSaid = false; st.goodStreak = 0; st.lastHadTip = false;
+    $("hudSet").textContent = `세트 ${st.set}/${TARGET_SETS}`; updateStats();
+    setMode("position", `${st.set}세트 준비! 전신이 보이게 똑바로 서 주세요`, `${st.set}세트 준비할게요. 전신이 보이게 똑바로 서 주세요`);
+  }
 }
 
 // ===== 코치 진행 (자리 잡기 → 대기 → 셋둘하나 → 시작 / 화면 밖 → 잠깐 멈춤) =====
@@ -343,7 +442,7 @@ function coachStart(R, full) {
       if (step === 1) { big("준비… 2"); say("둘"); }
       if (step === 2) { big("준비… 1"); say("하나"); }
       if (step >= 3) {
-        st.phase = "up";
+        st.phase = "up"; st.armed = false;
         const resume = st.reps > 0;
         setMode("go", resume ? `다시 시작! (${st.reps}개부터) 💪` : `${st.set}세트 시작! 💪`, resume ? "다시 시작!" : "시작!");
       }
@@ -391,6 +490,7 @@ function startLoop() {
   let lastStamp = 0;
   const loop = () => {
     if (!st.running && !st.resting) return;
+    restTick();
     if (video.currentTime !== lastT) {
       lastT = video.currentTime;
       const stamp = Math.max(performance.now(), lastStamp + 1); lastStamp = stamp;
@@ -414,13 +514,35 @@ async function startFromVideo(url) {
     await video.play();
     st.running = true; log("영상으로 시험 시작"); setMode("position", "영상으로 시험 중… 전신이 보이길 기다려요");
     video.onended = () => {
-      const msg = `영상 끝! 센 개수 ${st.total}개, 깊이 OK ${st.deep}개, 무릎 모임 ${st.knee}번`;
+      const msg = `영상 끝! 센 개수 ${st.total}개, 깊이 OK ${st.deep}개, 무릎 모임 ${st.knee}번, 고개·상체 숙임 ${st.form}번`;
       big("🎞 " + msg); log(msg); stopAll(true);
     };
     startLoop();
   } catch (e) { console.error(e); setBusy(false); big("이 영상은 열 수 없어요: " + (e.message || e)); }
 }
 window.baroStartVideo = startFromVideo;   // 시험용
+// 시험용: 영상을 한 장면씩 넘기며 빠르게 채점 (화면이 숨겨져도 동작). 시계를 영상 시간으로 바꿔서 돌림.
+//   frameUrl(i) → i번째 사진 주소 (영상을 미리 사진으로 풀어 둔 것), count = 사진 수
+window.baroOffline = async function (frameUrl, count, fps = 10) {
+  stopAll(true); resetState(); await loadModel();
+  const realNow = performance.now.bind(performance); let sim = 0;
+  performance.now = () => sim;
+  const said = []; const realSay = window.speechSynthesis.speak.bind(window.speechSynthesis);
+  window.speechSynthesis.speak = u => said.push(`${(sim / 1000).toFixed(1)}s ${u.text}`);
+  try {
+    st.running = true; setMode("position", "영상 빠른 채점 중…");
+    for (let i = 0; i < count && st.running; i++) {
+      sim = i * 1000 / fps;
+      const img = await createImageBitmap(await (await fetch(frameUrl(i))).blob());
+      restTick();
+      const res = landmarker.detectForVideo(img, sim + 1);
+      const lm = res.landmarks && res.landmarks[0];
+      if (lm) { draw(lm, img.width, img.height); analyze(lm, img.width, img.height); } else coachLost();
+      img.close();
+    }
+  } finally { performance.now = realNow; window.speechSynthesis.speak = realSay; }
+  return { said, total: st.total, deep: st.deep, knee: st.knee, log: [...$("log").children].map(li => li.textContent).reverse() };
+};
 $("btnVideo").onclick = () => $("videoFile").click();
 $("videoFile").onchange = e => { const f = e.target.files[0]; if (f) startFromVideo(URL.createObjectURL(f)); e.target.value = ""; };
 
