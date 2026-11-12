@@ -62,11 +62,13 @@
     <div class="face" style="background:#fff3e0;border-color:var(--warn)">🧑‍🏫</div>
   </section>
   <input type="file" id="faceFile" accept="image/*" hidden>
+  <input type="file" id="videoFile" accept="video/*" hidden>
 
   <section class="card">
     <div class="row" style="margin-bottom:10px">
       <button id="btnStart">📷 카메라로 시작</button>
       <button id="btnDemo" class="sub">🎬 데모 보기</button>
+      <button id="btnVideo" class="sub">🎞 찍은 영상으로</button>
       <button id="btnStop" class="sub" disabled>⏹ 그만</button>
       <button id="btnPain" class="danger">😣 아파요</button>
     </div>
@@ -157,7 +159,7 @@ const NUM = ["", "하나", "둘", "셋", "넷", "다섯", "여섯", "일곱", "�
 let st;
 function resetState() {
   st = { set: 1, reps: 0, total: 0, deep: 0, knee: 0,
-         phase: "up", minR: 9, minKnee: 9, standThigh: 0, rEma: null,
+         phase: "up", minR: 9, minKnee: 9, standSamples: [], standRatio: 1, rEma: null, badShown: false, frames: 0,
          resting: false, restLeft: 0, running: false, lastMsgAt: 0, bad: 0 };
   $("log").innerHTML = ""; updateStats(); $("hudSet").textContent = `세트 1/${TARGET_SETS}`;
 }
@@ -179,13 +181,21 @@ function angle(a, b, c) {           // b에서의 각도(도)
 function analyze(lm, w, h) {
   const ls = P(lm, 11, w, h), rs = P(lm, 12, w, h), lh = P(lm, 23, w, h), rh = P(lm, 24, w, h);
   const lk = P(lm, 25, w, h), rk = P(lm, 26, w, h), la = P(lm, 27, w, h), ra = P(lm, 28, w, h);
-  const need = [lh, rh, lk, rk, la, ra];
-  if (Math.min(...need.map(p => p.v)) < VIS_MIN) {
+
+  // 화면 밖으로 나간 점은 인식기가 '짐작'한 것이라 믿지 않음 (10-12 영상: 가까이 있을 때 잘못 기억한 원인)
+  const inFrame = i => lm[i].x > 0.01 && lm[i].x < 0.99 && lm[i].y > 0.01 && lm[i].y < 0.99;
+  const legOk = (hi, ki, ai) => [hi, ki, ai].every(i => inFrame(i) && (lm[i].visibility ?? 1) >= VIS_MIN);
+  // 다리마다 따로 봄 → 옆에서 찍어 뒤쪽 다리가 가려져도 앞쪽 다리로 판단
+  const legs = [];
+  if (legOk(23, 25, 27)) legs.push([lh, lk, la]);
+  if (legOk(24, 26, 28)) legs.push([rh, rk, ra]);
+  if (!legs.length) {
     $("hudDepth").textContent = "깊이: -";
-    if (++st.bad > 15) big("다리가 잘 안 보여요. 뒤로 물러나서 발끝까지 보이게 해 주세요");
+    if (++st.bad > 15 && !st.badShown) { big("다리가 잘 안 보여요. 뒤로 물러나서 발끝까지 보이게 해 주세요"); st.badShown = true; }
     return;
   }
   st.bad = 0;
+  if (st.badShown) { st.badShown = false; big("좋아요, 잘 보여요! 똑바로 섰다가 시작해요"); }
 
   // 찍는 방향: 어깨 폭 ÷ 몸통 길이
   const torso = Math.abs((ls.y + rs.y) / 2 - (lh.y + rh.y) / 2) || 1;
@@ -193,20 +203,28 @@ function analyze(lm, w, h) {
   const view = ratio > 0.55 ? "front" : ratio < 0.35 ? "side" : "diag";
   $("hudView").textContent = "방향: " + ({ front: "앞", side: "옆", diag: "비스듬" })[view];
 
-  // 서 있을 때 허벅지 길이(세로) 기억하기 — 무릎이 거의 펴졌을 때만
-  const kneeAng = Math.min(angle(lh, lk, la), angle(rh, rk, ra));
-  const thigh = ((lk.y + rk.y) / 2) - ((lh.y + rh.y) / 2);
-  // (앞에서 찍으면 앉는 중에도 무릎이 펴져 보일 수 있어서, 거의 다 일어섰을 때만 갱신)
-  if (kneeAng > 160 && thigh > 0) {
-    if (!st.standThigh) st.standThigh = thigh;
-    else if (thigh > st.standThigh * 0.92) st.standThigh = st.standThigh * 0.9 + thigh * 0.1;
+  // 허벅지 세로 길이 ÷ 정강이 길이 → 카메라와의 거리가 바뀌어도 같은 값
+  let sumR = 0, kneeAng = 180;
+  for (const [hp, kn, an] of legs) {
+    const shin = Math.hypot(kn.x - an.x, kn.y - an.y) || 1;
+    sumR += (kn.y - hp.y) / shin;
+    kneeAng = Math.min(kneeAng, angle(hp, kn, an));
   }
-  if (!st.standThigh) { big("먼저 똑바로 서 주세요"); return; }
+  const raw = sumR / legs.length;
+
+  // '서 있을 때 값' = 무릎이 펴졌던 최근 장면들의 위쪽 값 (한 번에 고정하지 않고 계속 갱신)
+  if (kneeAng > 165 && raw > 0) {
+    st.standSamples.push(raw); if (st.standSamples.length > 150) st.standSamples.shift();
+    const s = [...st.standSamples].sort((a, b) => a - b);
+    st.standRatio = s[Math.floor(s.length * 0.8)];
+  }
+  if (st.standSamples.length < 10) { big("먼저 똑바로 서 주세요"); return; }
 
   // 깊이 비율: 1 = 서 있음, 0 = 허벅지 수평
-  const r = thigh / st.standThigh;
+  const r = raw / st.standRatio;
   st.rEma = st.rEma == null ? r : st.rEma * 0.3 + r * 0.7;   // 떨림만 살짝 줄이기
   const R = st.rEma;
+  st.frames++;
   $("hudDepth").textContent = `깊이: ${Math.max(0, Math.round((1 - R) * 100))}%` + (view === "side" ? ` · 무릎 ${Math.round(kneeAng)}°` : "");
 
   if (st.resting) return;
@@ -215,7 +233,7 @@ function analyze(lm, w, h) {
   if (st.phase === "up" && R < DOWN_START) { st.phase = "down"; st.minR = R; st.minKnee = 9; }
   if (st.phase === "down") {
     st.minR = Math.min(st.minR, R);
-    if (view === "front" && R < 0.7) st.minKnee = Math.min(st.minKnee, kneeRatio);
+    if (view === "front" && legs.length === 2 && R < 0.7) st.minKnee = Math.min(st.minKnee, kneeRatio);
     if (R > UP_DONE) { st.phase = "up"; finishRep(view); }
   }
 }
@@ -291,6 +309,43 @@ async function loadModel() {
   return landmarker;
 }
 
+function startLoop() {
+  let lastStamp = 0;
+  const loop = () => {
+    if (!st.running && !st.resting) return;
+    if (video.currentTime !== lastT) {
+      lastT = video.currentTime;
+      const stamp = Math.max(performance.now(), lastStamp + 1); lastStamp = stamp;
+      const res = landmarker.detectForVideo(video, stamp);
+      const lm = res.landmarks && res.landmarks[0];
+      if (lm) { draw(lm, video.videoWidth, video.videoHeight); analyze(lm, video.videoWidth, video.videoHeight); }
+      else { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+    }
+    rafId = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+// ===== 찍어 둔 영상으로 시험 (폰 기본 카메라로 찍은 스쿼트 영상) =====
+async function startFromVideo(url) {
+  stopAll(true); resetState(); setBusy(true);
+  try {
+    await loadModel();
+    video.srcObject = null; video.src = url; video.muted = true; video.loop = false;
+    video.classList.remove("mirror"); canvas.classList.remove("mirror");
+    await video.play();
+    st.running = true; big("영상으로 시험 중…"); log("영상으로 시험 시작");
+    video.onended = () => {
+      const msg = `영상 끝! 센 개수 ${st.total}개, 깊이 OK ${st.deep}개, 무릎 모임 ${st.knee}번`;
+      big("🎞 " + msg); log(msg); stopAll(true);
+    };
+    startLoop();
+  } catch (e) { console.error(e); setBusy(false); big("이 영상은 열 수 없어요: " + (e.message || e)); }
+}
+window.baroStartVideo = startFromVideo;   // 시험용
+$("btnVideo").onclick = () => $("videoFile").click();
+$("videoFile").onchange = e => { const f = e.target.files[0]; if (f) startFromVideo(URL.createObjectURL(f)); e.target.value = ""; };
+
 $("btnStart").onclick = async () => {
   stopAll(true); resetState(); setBusy(true);
   try {
@@ -302,22 +357,18 @@ $("btnStart").onclick = async () => {
     video.classList.toggle("mirror", mirror); canvas.classList.toggle("mirror", mirror);
     st.running = true; big("똑바로 서 주세요. 준비되면 내려가요!"); say("똑바로 서 주세요. 준비되면 시작해요");
     if ($("optTempo").checked) startTempo();
-    const loop = () => {
-      if (!st.running && !st.resting) return;
-      if (video.currentTime !== lastT) {
-        lastT = video.currentTime;
-        const res = landmarker.detectForVideo(video, performance.now());
-        const lm = res.landmarks && res.landmarks[0];
-        if (lm) { draw(lm, video.videoWidth, video.videoHeight); analyze(lm, video.videoWidth, video.videoHeight); }
-        else { ctx.clearRect(0, 0, canvas.width, canvas.height); }
-      }
-      rafId = requestAnimationFrame(loop);
-    };
-    loop();
+    startLoop();
   } catch (e) {
     console.error(e); setBusy(false);
-    big(e && e.name === "NotAllowedError" ? "카메라 허용이 필요해요 (주소창 옆 카메라 아이콘)" :
+    const name = e && e.name;
+    big(name === "NotAllowedError" ? "카메라가 막혀 있어요. 아래 '기록'의 3가지를 확인해 주세요" :
+        name === "NotReadableError" ? "다른 앱이 카메라를 쓰고 있어요. 그 앱을 닫고 다시 눌러 주세요" :
         location.protocol === "file:" ? "start.bat 으로 켜야 카메라가 돼요" : "카메라를 켤 수 없어요: " + (e.message || e));
+    if (name === "NotAllowedError") {
+      log("③ 휴대폰 위에서 아래로 쓸어내린 빠른 설정에 '카메라 액세스'가 꺼져 있으면 켜기");
+      log("② 휴대폰 설정 → 애플리케이션 → Chrome(또는 쓰는 브라우저) → 권한 → 카메라 → 허용");
+      log("① 주소창 왼쪽 아이콘 누르기 → 권한(사이트 설정) → 카메라 → 허용 → 새로고침");
+    }
   }
 };
 
@@ -351,9 +402,11 @@ $("btnDemo").onclick = () => {
 };
 
 // ===== 멈추기 =====
-function setBusy(b) { $("btnStop").disabled = !b; $("btnStart").disabled = b; $("btnDemo").disabled = b; }
+function setBusy(b) { $("btnStop").disabled = !b; $("btnStart").disabled = b; $("btnDemo").disabled = b; $("btnVideo").disabled = b; }
 function stopAll(silent) {
   if (st) { st.running = false; st.resting = false; }
+  if (!video.paused) video.pause();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (rafId) cancelAnimationFrame(rafId); rafId = null;
   if (demoTimer) clearInterval(demoTimer); demoTimer = null;
   if (tempoTimer) clearInterval(tempoTimer); tempoTimer = null;
